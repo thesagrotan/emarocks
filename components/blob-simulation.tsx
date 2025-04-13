@@ -188,7 +188,7 @@ class Blob {
   }
 
   // Refine the repelBlobs method to ensure shapes maintain their structure while preventing overlap
-  repelBlobs(blobs: Blob[]) {
+  repelBlobs(blobs: Blob[], interactionStrength: number) {
     this.updateMaxRadius();
 
     this.particles.forEach((particleA) => {
@@ -205,7 +205,7 @@ class Blob {
 
           if (dist > 1e-6 && dist < this.repelDistance) {
             const overlap = this.repelDistance - dist;
-            const forceMagnitude = overlap * 0.05; // Reduce force magnitude to avoid distortion
+            const forceMagnitude = overlap * interactionStrength; // Use interactionStrength
             tempVec.normalize().multiplyScalar(forceMagnitude);
 
             particleA.applyForce(tempVec);
@@ -303,9 +303,10 @@ class Blob {
     canvasWidth: number,
     canvasHeight: number,
     margin: number,
-    isRoundedContainer: boolean
+    isRoundedContainer: boolean,
+    interactionStrength: number
   ) {
-    this.repelBlobs(blobs);
+    this.repelBlobs(blobs, interactionStrength);
     this.maintainPressure();
     this.grow();
 
@@ -469,6 +470,12 @@ export function BlobSimulation() {
   const [gravity, setGravity] = useState(0.1);
   const [damping, setDamping] = useState(0.98);
 
+  const [interactionStrength, setInteractionStrength] = useState(0.05); // New state for interaction strength
+
+  const handleInteractionStrengthChange = (value: number[]) => {
+    setInteractionStrength(value[0]);
+  };
+
   const initializeSimulation = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -611,7 +618,7 @@ export function BlobSimulation() {
 
       blobsRef.current.forEach((blob) => {
         if (blob && typeof blob.update === "function") {
-          blob.update(blobsRef.current, springTension, canvasWidth, canvasHeight, margin, isRoundedContainer)
+          blob.update(blobsRef.current, springTension, canvasWidth, canvasHeight, margin, isRoundedContainer, interactionStrength);
         }
       })
 
@@ -804,11 +811,11 @@ export function BlobSimulation() {
         <canvas ref={canvasRef} onClick={handleCanvasClick} className="block rounded-lg w-full h-full bg-[#aac9ca] dark:bg-[#3f757d]" />
         <button
           onClick={toggleAnimation}
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 text-2xl w-12 h-12 bg-black/50 rounded-full p-2 cursor-pointer text-white opacity-80 hover:opacity-100 transition-opacity"
-          aria-label={isAnimating ? "Pause simulation" : "Play simulation"}
+          className="absolute bottom-4 left-4 z-10 bg-black/50 rounded-full p-2 cursor-pointer text-white opacity-80 hover:opacity-100 transition-opacity"
+          aria-label={isAnimating ? 'Pause simulation' : 'Play simulation'}
           data-animating={isAnimating}
         >
-          {isAnimating ? <Pause className="w-full h-full" /> : <Play className="w-full h-full" />}
+          {isAnimating ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
         </button>
         <button
           onClick={downloadSVG}
@@ -922,6 +929,20 @@ export function BlobSimulation() {
                 step={0.01}
                 value={[damping]}
                 onValueChange={(value) => setDamping(value[0])}
+              />
+            </div>
+
+            <div className="text-left">
+              <label htmlFor="interactionStrength" className="block mb-1 font-medium">
+                Interaction Strength: {interactionStrength.toFixed(2)}
+              </label>
+              <Slider
+                id="interactionStrength"
+                min={0.01}
+                max={0.2}
+                step={0.01}
+                value={[interactionStrength]}
+                onValueChange={handleInteractionStrengthChange}
               />
             </div>
 
