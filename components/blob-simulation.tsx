@@ -229,16 +229,16 @@ class Blob {
     return Math.abs(total / 2)
   }
 
-  grow() {
-    if (this.initialArea <= 0) return
+  grow(maxExpansionFactor: number) {
+    if (this.initialArea <= 0) return;
 
-    const maxTargetArea = this.initialArea * 3
+    const maxTargetArea = this.initialArea * maxExpansionFactor;
 
     if (this.targetArea < maxTargetArea) {
-      this.targetArea *= 1.002
+      this.targetArea *= 1.02;
 
       if (this.targetArea > maxTargetArea) {
-        this.targetArea = maxTargetArea
+        this.targetArea = maxTargetArea;
       }
     }
   }
@@ -308,7 +308,7 @@ class Blob {
   ) {
     this.repelBlobs(blobs, interactionStrength);
     this.maintainPressure();
-    this.grow();
+    this.grow(maxExpansionFactor);
 
     const center = new Vector2(canvasWidth / 2, canvasHeight / 2);
     const maxDistance = (canvasWidth - margin * 2) / 2;
@@ -362,90 +362,119 @@ class Blob {
 }
 
 // Poisson Disk Sampling Function
-function poissonDiskSampling(width: number, height: number, minDist: number, k = 30, maxPoints?: number) {
-  const radiusSq = minDist * minDist
-  const cellSize = minDist / Math.SQRT2
+// Add minBlobSize as a parameter to the function
+function poissonDiskSampling(
+  width: number,
+  height: number,
+  minDist: number,
+  k = 30,
+  maxPoints?: number,
+  restrictedArea?: { x: number; y: number; size: number; margin: number },
+  minBlobSize: number
+) {
+  const radiusSq = minDist * minDist;
+  const cellSize = minDist / Math.SQRT2;
 
-  const gridWidth = Math.ceil(width / cellSize)
-  const gridHeight = Math.ceil(height / cellSize)
+  const gridWidth = Math.ceil(width / cellSize);
+  const gridHeight = Math.ceil(height / cellSize);
 
-  const grid = new Array(gridWidth * gridHeight).fill(null)
-  const points: Vector2[] = []
-  const active: Vector2[] = []
+  const grid = new Array(gridWidth * gridHeight).fill(null);
+  const points: Vector2[] = [];
+  const active: Vector2[] = [];
 
   function gridCoords(p: Vector2) {
     return {
       x: Math.floor(p.x / cellSize),
       y: Math.floor(p.y / cellSize),
-    }
+    };
   }
 
   function insertPoint(p: Vector2) {
-    const coords = gridCoords(p)
-    grid[coords.x + coords.y * gridWidth] = p
-    points.push(p)
-    active.push(p)
+    const coords = gridCoords(p);
+    grid[coords.x + coords.y * gridWidth] = p;
+    points.push(p);
+    active.push(p);
   }
 
   function isFarEnough(p: Vector2) {
-    const coords = gridCoords(p)
+    const coords = gridCoords(p);
 
-    const minX = Math.max(0, coords.x - 2)
-    const minY = Math.max(0, coords.y - 2)
-    const maxX = Math.min(gridWidth - 1, coords.x + 2)
-    const maxY = Math.min(gridHeight - 1, coords.y + 2)
+    const minX = Math.max(0, coords.x - 2);
+    const minY = Math.max(0, coords.y - 2);
+    const maxX = restrictedArea.x + restrictedArea.size + restrictedArea.margin + 40;
+    const maxY = Math.min(gridHeight - 1, coords.y + 2);
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
-        const neighbor = grid[x + y * gridWidth]
+        const neighbor = grid[x + y * gridWidth];
 
         if (neighbor) {
-          if (p.distanceToSquared(neighbor) < radiusSq) return false
+          if (p.distanceToSquared(neighbor) < radiusSq) return false;
         }
       }
     }
 
-    return true
+    return true;
   }
 
-  if (width <= 0 || height <= 0) return []
+  // Move the isOutsideRestrictedArea function outside the conditional block
+  function isOutsideRestrictedArea(p: Vector2): boolean {
+    if (!restrictedArea) return true;
 
-  const p0 = new Vector2(Math.random() * width, Math.random() * height)
-  insertPoint(p0)
+    const minX = restrictedArea.x - restrictedArea.margin;
+    const maxX = restrictedArea.x + restrictedArea.size + restrictedArea.margin;
+    const minY = restrictedArea.y - restrictedArea.margin;
+    const maxY = restrictedArea.y + restrictedArea.size + restrictedArea.margin;
+
+    return p.x < minX || p.x > maxX || p.y < minY || p.y > maxY;
+  }
+
+  if (width <= 0 || height <= 0) return [];
+
+  // Ensure the initial point is outside the restricted area
+  let p0;
+  do {
+    p0 = new Vector2(Math.random() * width, Math.random() * height);
+  } while (!isOutsideRestrictedArea(p0));
+  insertPoint(p0);
+
+  console.log(`Restricted Area: Position (x: ${restrictedArea.x}, y: ${restrictedArea.y}), Size: ${restrictedArea.size}, Margin: ${restrictedArea.margin}`);
 
   while (active.length > 0 && (!maxPoints || points.length < maxPoints)) {
-    const activeIndex = Math.floor(Math.random() * active.length)
-    const currentPoint = active[activeIndex]
-    let foundCandidate = false
+    const activeIndex = Math.floor(Math.random() * active.length);
+    const currentPoint = active[activeIndex];
+    let foundCandidate = false;
 
     for (let i = 0; i < k; i++) {
-      if (maxPoints && points.length >= maxPoints) break
+      if (maxPoints && points.length >= maxPoints) break;
 
-      const angle = Math.random() * Math.PI * 2
-      const radius = minDist * (1 + Math.random())
+      const angle = Math.random() * Math.PI * 2;
+      const radius = minDist * (1 + Math.random());
 
       const candidate = new Vector2(
         currentPoint.x + Math.cos(angle) * radius,
-        currentPoint.y + Math.sin(angle) * radius,
-      )
+        currentPoint.y + Math.sin(angle) * radius
+      );
 
       if (
         candidate.x >= 0 &&
         candidate.x < width &&
         candidate.y >= 0 &&
-        isFarEnough(candidate)
+        candidate.y < height &&
+        isFarEnough(candidate) &&
+        isOutsideRestrictedArea(candidate) // Ensure candidate is outside restricted area
       ) {
-        insertPoint(candidate)
-        foundCandidate = true
+        insertPoint(candidate);
+        foundCandidate = true;
       }
     }
 
     if (!foundCandidate) {
-      active.splice(activeIndex, 1)
+      active.splice(activeIndex, 1);
     }
   }
 
-  return points.map((p) => [p.x, p.y])
+  return points.map((p) => [p.x, p.y]);
 }
 
 // Function to convert hex to rgba
@@ -504,28 +533,7 @@ export function BlobSimulation() {
     setInteractionStrength(value[0]);
   };
 
-  // Add state for letter and its position
-  const [letter, setLetter] = useState<string | null>(null);
-  const [letterPosition, setLetterPosition] = useState<{ x: number; y: number } | null>(null);
-
-  // Add debugging logs to trace letter and position updates
-  const handleLetterPlacement = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !letter) {
-      console.log("Canvas or letter not available:", { canvas, letter });
-      return;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (event.clientX - rect.left) * scaleX;
-    const y = (event.clientY - rect.top) * scaleY;
-
-    console.log("Setting letter position:", { x, y });
-    setLetterPosition({ x, y });
-    draw();
-  };
+  const [maxExpansionFactor, setMaxExpansionFactor] = useState(3); // Default to 3x the initial size
 
   // Update initializeSimulation to reassign invalid points until they are in a valid area
   const initializeSimulation = () => {
@@ -537,68 +545,32 @@ export function BlobSimulation() {
   
     console.log(`Initializing simulation with ${shapeCount} shapes...`);
   
-    // Define canvas size
     const canvasSize = 512;
-  
-    // Define container margin
-    const containerMargin = 100; // Fixed margin for the container
-    const margin = minBlobSize * 2; // Margin from the container border
-  
-    // Define logical space for blob distribution (container size minus margins)
+    const containerMargin = 100;
+    const margin = minBlobSize * 2;
     const logicalWidth = canvasSize - containerMargin * 2 - margin * 2;
     const logicalHeight = canvasSize - containerMargin * 2 - margin * 2;
+    const initialSize = minBlobSize;
+    const minBlobDist = initialSize * 2 * 1.2;
   
-    // Calculate minDist for the logical space
-    const initialSize = minBlobSize; // Use the minBlobSize state instead of hardcoding
-    const minBlobDist = initialSize * 2 * 1.2; // diameter + 20% spacing (~48)
-  
-    console.log(`Sampling area: ${logicalWidth}x${logicalHeight}, Min dist: ${minBlobDist.toFixed(1)}`);
-  
-    // Define square properties
-    const squareSize = 100;
-    const squarePosition = { x: canvasSize / 2 - squareSize / 2, y: canvasSize / 2 - squareSize / 2 };
-  
-    // Generate points in the logical space, limited by shapeCount
-    const generatedPoints = poissonDiskSampling(
+    // Pre-generate all valid positions
+    const validPoints = poissonDiskSampling(
       logicalWidth,
       logicalHeight,
       minBlobDist,
       30,
-      shapeCount
-    ).map(([x, y]) => {
-      // Add container and margin offsets to position the blobs correctly
-      let adjustedX = x + containerMargin + margin;
-      let adjustedY = y + containerMargin + margin;
+      shapeCount,
+      { x: (logicalWidth / 2) - 50, y: (logicalHeight / 2) - 50, size: 100, margin: 50 }, // Adjusted to align with logical canvas center
+      minBlobSize
+    ).map(([x, y]) => [
+      x + containerMargin + margin,
+      y + containerMargin + margin,
+    ]);
   
-      // Reassign points until they are in a valid area
-      while (
-        adjustedX <= containerMargin + margin ||
-        adjustedX >= canvasSize - containerMargin - margin ||
-        adjustedY <= containerMargin + margin ||
-        adjustedY >= canvasSize - containerMargin - margin ||
-        (adjustedX > squarePosition.x &&
-          adjustedX < squarePosition.x + squareSize &&
-          adjustedY > squarePosition.y &&
-          adjustedY < squarePosition.y + squareSize)
-      ) {
-        const newPoint = poissonDiskSampling(
-          logicalWidth,
-          logicalHeight,
-          minBlobDist,
-          30,
-          1
-        )[0];
-        adjustedX = newPoint[0] + containerMargin + margin;
-        adjustedY = newPoint[1] + containerMargin + margin;
-      }
+    console.log(`Generated ${validPoints.length} valid points.`);
   
-      return [adjustedX, adjustedY];
-    });
-  
-    console.log(`Generated ${generatedPoints.length} points after validation.`);
-  
-    // Create blobs using validated points
-    blobsRef.current = generatedPoints.map(([x, y]) => {
+    // Assign pre-generated positions to blobs
+    blobsRef.current = validPoints.map(([x, y]) => {
       return new Blob(x, y, edgePointCount, initialSize, repelDistance);
     });
   
@@ -665,16 +637,6 @@ export function BlobSimulation() {
         });
       }
   
-      // Add debugging logs to verify letter and position
-      if (letter && letterPosition) {
-        console.log("Drawing letter:", letter, "at position:", letterPosition);
-        ctx.font = "100px Arial";
-        ctx.fillStyle = colors.fg;
-        ctx.fillText(letter, letterPosition.x, letterPosition.y);
-      } else {
-        console.log("Letter or position not defined:", { letter, letterPosition });
-      }
-
       // Add square properties
       const squareSize = 100; // Size of the square
       const squarePosition = { x: canvasWidth / 2 - squareSize / 2, y: canvasHeight / 2 - squareSize / 2 };
@@ -689,6 +651,12 @@ export function BlobSimulation() {
         setIsAnimating(false);
       }
     }
+  };
+
+  const [speed, setSpeed] = useState(1); // New state for speed
+
+  const handleSpeedChange = (value: number[]) => {
+    setSpeed(value[0]);
   };
 
   const animate = () => {
@@ -708,7 +676,7 @@ export function BlobSimulation() {
       blobsRef.current.forEach((blob) => {
         if (blob && typeof blob.update === "function") {
           blob.update(blobsRef.current, springTension, canvasWidth, canvasHeight, margin, isRoundedContainer, interactionStrength);
-          blob.collideWithLetter(ctx, letter, letterPosition);
+          blob.grow(maxExpansionFactor); // Pass maxExpansionFactor here
 
           // Check collision and overlap with the square
           const squareSize = 100; // Size of the square
@@ -727,15 +695,15 @@ export function BlobSimulation() {
             ) {
               const direction = new Vector2(dx, dy).normalize();
 
-              // Move the particle until it is no longer overlapping
-              while (
-                particle.pos.x > squarePosition.x &&
-                particle.pos.x < squarePosition.x + squareSize &&
-                particle.pos.y > squarePosition.y &&
-                particle.pos.y < squarePosition.y + squareSize
-              ) {
-                particle.pos.add(direction.multiplyScalar(1)); // Move by 1 unit in the direction
-              }
+              // Move the particle out of the square bounds
+              particle.pos.x =
+                direction.x > 0
+                  ? squarePosition.x + squareSize + 1
+                  : squarePosition.x - 1;
+              particle.pos.y =
+                direction.y > 0
+                  ? squarePosition.y + squareSize + 1
+                  : squarePosition.y - 1;
 
               particle.vel.multiplyScalar(-0.5); // Reverse velocity for bounce effect
             }
@@ -792,14 +760,14 @@ export function BlobSimulation() {
   }
 
   const handleShapeCountChange = (value: number[]) => {
-    setShapeCount(value[0])
-    initializeSimulation()
+    setShapeCount(value[0]);
+    initializeSimulation(); // Reinitialize the simulation with the updated shape count
 
     if (isAnimating) {
-      cancelAnimationFrame(animationFrameIdRef.current!)
-      animationFrameIdRef.current = requestAnimationFrame(animate)
+      cancelAnimationFrame(animationFrameIdRef.current!);
+      animationFrameIdRef.current = requestAnimationFrame(animate);
     }
-  }
+  };
 
   const handleRestart = () => {
     console.log("Restart clicked")
@@ -948,7 +916,6 @@ export function BlobSimulation() {
           ref={canvasRef}
           onClick={(e) => {
             handleCanvasClick(e);
-            handleLetterPlacement(e);
           }}
           className="block rounded-lg w-full h-full bg-[#aac9ca] dark:bg-[#3f757d]"
         />
@@ -1086,6 +1053,20 @@ export function BlobSimulation() {
                 step={0.01}
                 value={[interactionStrength]}
                 onValueChange={handleInteractionStrengthChange}
+              />
+            </div>
+
+            <div className="text-left">
+              <label htmlFor="maxExpansionFactor" className="block mb-1 font-medium">
+                Max Expansion Factor: {maxExpansionFactor.toFixed(1)}x
+              </label>
+              <Slider
+                id="maxExpansionFactor"
+                min={1}
+                max={5}
+                step={0.1}
+                value={[maxExpansionFactor]}
+                onValueChange={(value) => setMaxExpansionFactor(value[0])}
               />
             </div>
 
@@ -1255,19 +1236,16 @@ export function BlobSimulation() {
             </div>
 
             <div className="text-left">
-              <label htmlFor="letter" className="block mb-1 font-medium">
-                Letter:
+              <label htmlFor="speed" className="block mb-1 font-medium">
+                Speed: {speed.toFixed(1)}
               </label>
-              <input
-                id="letter"
-                type="text"
-                maxLength={1}
-                value={letter || ""}
-                onChange={(e) => {
-                  console.log("Letter input changed:", e.target.value);
-                  setLetter(e.target.value);
-                }}
-                className="w-full px-2 py-1 border rounded-md"
+              <Slider
+                id="speed"
+                min={0.1}
+                max={3}
+                step={0.1}
+                value={[speed]}
+                onValueChange={handleSpeedChange}
               />
             </div>
           </TabsContent>

@@ -845,6 +845,9 @@ video {
 .grid {
   display: grid;
 }
+.\!grid {
+  display: grid !important;
+}
 .hidden {
   display: none;
 }
