@@ -330,6 +330,35 @@ class Blob {
 
     this.springs.forEach((spring) => spring.update(springTension));
   }
+
+  collideWithLetter(ctx: CanvasRenderingContext2D, letter: string | null, letterPosition: { x: number; y: number } | null) {
+    if (!letter || !letterPosition) return;
+
+    const textMetrics = ctx.measureText(letter);
+    const letterWidth = textMetrics.width;
+    const letterHeight = 100; // Approximate height for the font size
+
+    this.particles.forEach((particle) => {
+      if (
+        particle.pos.x > letterPosition.x &&
+        particle.pos.x < letterPosition.x + letterWidth &&
+        particle.pos.y > letterPosition.y - letterHeight &&
+        particle.pos.y < letterPosition.y
+      ) {
+        // Simple collision response: push particle out of the letter bounds
+        const dx = particle.pos.x - (letterPosition.x + letterWidth / 2);
+        const dy = particle.pos.y - (letterPosition.y - letterHeight / 2);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const overlap = 10 - distance;
+
+        if (overlap > 0) {
+          const direction = tempVec.set(dx, dy).normalize();
+          particle.pos.add(direction.multiplyScalar(overlap));
+          particle.vel.multiplyScalar(-0.5); // Damping effect
+        }
+      }
+    });
+  }
 }
 
 // Poisson Disk Sampling Function
@@ -404,7 +433,6 @@ function poissonDiskSampling(width: number, height: number, minDist: number, k =
         candidate.x >= 0 &&
         candidate.x < width &&
         candidate.y >= 0 &&
-        candidate.y < height &&
         isFarEnough(candidate)
       ) {
         insertPoint(candidate)
@@ -447,7 +475,7 @@ export function BlobSimulation() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isAnimating, setIsAnimating] = useState(false)
   const [edgePointCount, setEdgePointCount] = useState(25)
-  const [repelDistance, setRepelDistance] = useState(20)
+  const [repelDistance, setRepelDistance] = useState(5)
   const [springTension, setSpringTension] = useState(0.2)
   const [shapeCount, setShapeCount] = useState(15)
   const { theme } = useTheme()
@@ -476,31 +504,60 @@ export function BlobSimulation() {
     setInteractionStrength(value[0]);
   };
 
+  // Add state for letter and its position
+  const [letter, setLetter] = useState<string | null>(null);
+  const [letterPosition, setLetterPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Add debugging logs to trace letter and position updates
+  const handleLetterPlacement = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !letter) {
+      console.log("Canvas or letter not available:", { canvas, letter });
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+
+    console.log("Setting letter position:", { x, y });
+    setLetterPosition({ x, y });
+    draw();
+  };
+
+  // Update initializeSimulation to reassign invalid points until they are in a valid area
   const initializeSimulation = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
+  
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
+  
     console.log(`Initializing simulation with ${shapeCount} shapes...`);
-
+  
     // Define canvas size
     const canvasSize = 512;
-
-    // Define margin
-    const margin = 100;
-
-    // Define logical space for blob distribution (canvas size minus margins)
-    const logicalWidth = canvasSize - margin * 2;
-    const logicalHeight = canvasSize - margin * 2;
-
+  
+    // Define container margin
+    const containerMargin = 100; // Fixed margin for the container
+    const margin = minBlobSize * 2; // Margin from the container border
+  
+    // Define logical space for blob distribution (container size minus margins)
+    const logicalWidth = canvasSize - containerMargin * 2 - margin * 2;
+    const logicalHeight = canvasSize - containerMargin * 2 - margin * 2;
+  
     // Calculate minDist for the logical space
     const initialSize = minBlobSize; // Use the minBlobSize state instead of hardcoding
     const minBlobDist = initialSize * 2 * 1.2; // diameter + 20% spacing (~48)
-
+  
     console.log(`Sampling area: ${logicalWidth}x${logicalHeight}, Min dist: ${minBlobDist.toFixed(1)}`);
-
+  
+    // Define square properties
+    const squareSize = 100;
+    const squarePosition = { x: canvasSize / 2 - squareSize / 2, y: canvasSize / 2 - squareSize / 2 };
+  
     // Generate points in the logical space, limited by shapeCount
     const generatedPoints = poissonDiskSampling(
       logicalWidth,
@@ -508,49 +565,57 @@ export function BlobSimulation() {
       minBlobDist,
       30,
       shapeCount
-    );
-
-    console.log(`Generated ${generatedPoints.length} points.`);
-
-    // Create blobs using generated points, and add margin offset to position them correctly in the canvas
-    blobsRef.current = generatedPoints.map(([x, y]) => {
-      // Add margin to position the blobs in the center of the canvas
-      let adjustedX = x + margin;
-      let adjustedY = y + margin;
-
-      // Ensure blobs are initialized within the circle if rounded container is selected
-      if (isRoundedContainer) {
-        const centerX = canvasSize / 2;
-        const centerY = canvasSize / 2;
-        const maxRadius = (canvasSize - margin * 2) / 2;
-
-        const dx = adjustedX - centerX;
-        const dy = adjustedY - centerY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > maxRadius) {
-          const scale = maxRadius / distance;
-          adjustedX = centerX + dx * scale;
-          adjustedY = centerY + dy * scale;
-        }
+    ).map(([x, y]) => {
+      // Add container and margin offsets to position the blobs correctly
+      let adjustedX = x + containerMargin + margin;
+      let adjustedY = y + containerMargin + margin;
+  
+      // Reassign points until they are in a valid area
+      while (
+        adjustedX <= containerMargin + margin ||
+        adjustedX >= canvasSize - containerMargin - margin ||
+        adjustedY <= containerMargin + margin ||
+        adjustedY >= canvasSize - containerMargin - margin ||
+        (adjustedX > squarePosition.x &&
+          adjustedX < squarePosition.x + squareSize &&
+          adjustedY > squarePosition.y &&
+          adjustedY < squarePosition.y + squareSize)
+      ) {
+        const newPoint = poissonDiskSampling(
+          logicalWidth,
+          logicalHeight,
+          minBlobDist,
+          30,
+          1
+        )[0];
+        adjustedX = newPoint[0] + containerMargin + margin;
+        adjustedY = newPoint[1] + containerMargin + margin;
       }
-
-      return new Blob(adjustedX, adjustedY, edgePointCount, initialSize, repelDistance);
+  
+      return [adjustedX, adjustedY];
     });
-
+  
+    console.log(`Generated ${generatedPoints.length} points after validation.`);
+  
+    // Create blobs using validated points
+    blobsRef.current = generatedPoints.map(([x, y]) => {
+      return new Blob(x, y, edgePointCount, initialSize, repelDistance);
+    });
+  
     console.log("Initialization complete, calling draw...");
     draw();
-  }
+  };
 
+  // Update draw function to render the letter
   const draw = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+  
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+  
     try {
-      const currentTheme = theme || "light"
+      const currentTheme = theme || "light";
       const colors = {
         bg: currentTheme === "dark" ? darkBackgroundColor : backgroundColor,
         fg: currentTheme === "dark" ? "#f6fefa" : "#04050c",
@@ -559,77 +624,133 @@ export function BlobSimulation() {
           currentTheme === "dark"
             ? hexToRgba(darkBlobFillColor, darkBlobFillOpacity)
             : hexToRgba(blobFillColor, blobFillOpacity),
-      }
-
-      const dpi = window.devicePixelRatio || 1
-      const canvasWidth = 512
-      const canvasHeight = 512
-
-      canvas.width = canvasWidth * dpi
-      canvas.height = canvasHeight * dpi
-      canvas.style.width = `${canvasWidth}px`
-      canvas.style.height = `${canvasHeight}px`
-
+      };
+  
+      const dpi = window.devicePixelRatio || 1;
+      const canvasWidth = 512;
+      const canvasHeight = 512;
+  
+      canvas.width = canvasWidth * dpi;
+      canvas.height = canvasHeight * dpi;
+      canvas.style.width = `${canvasWidth}px`;
+      canvas.style.height = `${canvasHeight}px`;
+  
       // Apply DPI scaling
-      ctx.setTransform(dpi, 0, 0, dpi, 0, 0)
-
-      ctx.fillStyle = colors.bg
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight) // Clear background
-
+      ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
+  
+      ctx.fillStyle = colors.bg;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight); // Clear background
+  
       // Draw container boundary if enabled and handle rounded option
       if (showBorder) {
-        const margin = 100
-        ctx.strokeStyle = colors.accent
-        ctx.lineWidth = 2
+        const margin = 100;
+        ctx.strokeStyle = colors.accent;
+        ctx.lineWidth = 2;
         if (isRoundedContainer) {
-          const radius = (canvasWidth - margin * 2) / 2
-          ctx.beginPath()
-          ctx.arc(canvasWidth / 2, canvasHeight / 2, radius, 0, Math.PI * 2)
-          ctx.stroke()
+          const radius = (canvasWidth - margin * 2) / 2;
+          ctx.beginPath();
+          ctx.arc(canvasWidth / 2, canvasHeight / 2, radius, 0, Math.PI * 2);
+          ctx.stroke();
         } else {
-          ctx.strokeRect(margin, margin, canvasWidth - margin * 2, canvasHeight - margin * 2)
+          ctx.strokeRect(margin, margin, canvasWidth - margin * 2, canvasHeight - margin * 2);
         }
       }
-
+  
       // Draw blobs
       if (blobsRef.current && blobsRef.current.length > 0) {
         blobsRef.current.forEach((blob) => {
           if (blob && typeof blob.draw === "function") {
-            blob.draw(ctx, colors.fill, colors.accent)
+            blob.draw(ctx, colors.fill, colors.accent);
           }
-        })
+        });
       }
+  
+      // Add debugging logs to verify letter and position
+      if (letter && letterPosition) {
+        console.log("Drawing letter:", letter, "at position:", letterPosition);
+        ctx.font = "100px Arial";
+        ctx.fillStyle = colors.fg;
+        ctx.fillText(letter, letterPosition.x, letterPosition.y);
+      } else {
+        console.log("Letter or position not defined:", { letter, letterPosition });
+      }
+
+      // Add square properties
+      const squareSize = 100; // Size of the square
+      const squarePosition = { x: canvasWidth / 2 - squareSize / 2, y: canvasHeight / 2 - squareSize / 2 };
+
+      // Draw the square
+      ctx.fillStyle = "#ff0000"; // Red color for the square
+      ctx.fillRect(squarePosition.x, squarePosition.y, squareSize, squareSize);
     } catch (error) {
-      console.error("Error during draw:", error)
+      console.error("Error during draw:", error);
       if (isAnimating) {
-        cancelAnimationFrame(animationFrameIdRef.current!)
-        setIsAnimating(false)
+        cancelAnimationFrame(animationFrameIdRef.current!);
+        setIsAnimating(false);
       }
     }
-  }
+  };
 
   const animate = () => {
-    if (!isAnimating) return
-
+    if (!isAnimating) return;
+  
     try {
-      const canvasWidth = 512
-      const canvasHeight = 512
-      const margin = 100
-
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+  
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+  
+      const canvasWidth = 512;
+      const canvasHeight = 512;
+      const margin = 100;
+  
       blobsRef.current.forEach((blob) => {
         if (blob && typeof blob.update === "function") {
           blob.update(blobsRef.current, springTension, canvasWidth, canvasHeight, margin, isRoundedContainer, interactionStrength);
-        }
-      })
+          blob.collideWithLetter(ctx, letter, letterPosition);
 
-      draw()
-      animationFrameIdRef.current = requestAnimationFrame(animate)
+          // Check collision and overlap with the square
+          const squareSize = 100; // Size of the square
+          const squarePosition = { x: canvasWidth / 2 - squareSize / 2, y: canvasHeight / 2 - squareSize / 2 };
+
+          blob.particles.forEach((particle) => {
+            const dx = particle.pos.x - (squarePosition.x + squareSize / 2);
+            const dy = particle.pos.y - (squarePosition.y + squareSize / 2);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (
+              particle.pos.x > squarePosition.x &&
+              particle.pos.x < squarePosition.x + squareSize &&
+              particle.pos.y > squarePosition.y &&
+              particle.pos.y < squarePosition.y + squareSize
+            ) {
+              const direction = new Vector2(dx, dy).normalize();
+
+              // Move the particle until it is no longer overlapping
+              while (
+                particle.pos.x > squarePosition.x &&
+                particle.pos.x < squarePosition.x + squareSize &&
+                particle.pos.y > squarePosition.y &&
+                particle.pos.y < squarePosition.y + squareSize
+              ) {
+                particle.pos.add(direction.multiplyScalar(1)); // Move by 1 unit in the direction
+              }
+
+              particle.vel.multiplyScalar(-0.5); // Reverse velocity for bounce effect
+            }
+          });
+        }
+      });
+  
+      draw();
+      animationFrameIdRef.current = requestAnimationFrame(animate);
     } catch (error) {
-      console.error("Error during animation update:", error)
-      cancelAnimationFrame(animationFrameIdRef.current!)
-      setIsAnimating(false)
+      console.error("Error during animation update:", error);
+      cancelAnimationFrame(animationFrameIdRef.current!);
+      setIsAnimating(false);
     }
-  }
+  };
 
   const toggleAnimation = () => {
     const newIsAnimating = !isAnimating
@@ -755,17 +876,32 @@ export function BlobSimulation() {
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas || !toolMode) return;
-  
+
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width; // Scale factor for X
     const scaleY = canvas.height / rect.height; // Scale factor for Y
-    const x = (event.clientX - rect.left) * scaleX;
-    const y = (event.clientY - rect.top) * scaleY;
-  
+    const x = (event.clientX - rect.left) * scaleX; // Adjusted to account for canvas offset
+    const y = (event.clientY - rect.top) * scaleY; // Adjusted to account for canvas offset
+
     if (toolMode === 'add') {
-      const newBlob = new Blob(x, y, edgePointCount, minBlobSize, repelDistance);
+      // Check for overlap with existing blobs
+      const isOverlapping = blobsRef.current.some(blob => {
+        const dist = blob.centre.distanceTo(new Vector2(x, y));
+        return dist < blob.maxRadius + 10; // Ensure a minimum distance of 10
+      });
+
+      if (isOverlapping) {
+        console.warn("Cannot add shape: overlaps with existing shapes.");
+        return;
+      }
+
+      const newBlob = new Blob(x, y, edgePointCount, 10, repelDistance); // Start with size 10
       newBlob.centre.set(x, y); // Explicitly set the center position
-      newBlob.targetArea = Math.PI * minBlobSize * minBlobSize; // Set target area to match initial size
+      newBlob.maxRadius = 10; // Ensure the size starts at 10
+      newBlob.particles.forEach(particle => {
+        particle.pos.set(x, y); // Ensure all particles start at the clicked position
+      });
+      newBlob.setup(); // Reinitialize the blob's particles and springs
       blobsRef.current.push(newBlob);
     } else if (toolMode === 'remove') {
       blobsRef.current = blobsRef.current.filter((blob) => {
@@ -773,7 +909,7 @@ export function BlobSimulation() {
         return dist > blob.maxRadius;
       });
     }
-  
+
     draw();
   };
 
@@ -808,7 +944,14 @@ export function BlobSimulation() {
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start">
       <div className="relative w-[512px] h-[512px] flex-shrink-0">
-        <canvas ref={canvasRef} onClick={handleCanvasClick} className="block rounded-lg w-full h-full bg-[#aac9ca] dark:bg-[#3f757d]" />
+        <canvas
+          ref={canvasRef}
+          onClick={(e) => {
+            handleCanvasClick(e);
+            handleLetterPlacement(e);
+          }}
+          className="block rounded-lg w-full h-full bg-[#aac9ca] dark:bg-[#3f757d]"
+        />
         <button
           onClick={toggleAnimation}
           className="absolute bottom-4 left-4 z-10 bg-black/50 rounded-full p-2 cursor-pointer text-white opacity-80 hover:opacity-100 transition-opacity"
@@ -882,9 +1025,9 @@ export function BlobSimulation() {
               </label>
               <Slider
                 id="repelDistance"
-                min={5}
+                min={1}
                 max={50}
-                step={5}
+                step={1}
                 value={[repelDistance]}
                 onValueChange={handleRepelDistanceChange}
               />
@@ -1109,6 +1252,23 @@ export function BlobSimulation() {
                   <span className="text-xs font-mono">{darkBlobBorderColor}</span>
                 </div>
               </div>
+            </div>
+
+            <div className="text-left">
+              <label htmlFor="letter" className="block mb-1 font-medium">
+                Letter:
+              </label>
+              <input
+                id="letter"
+                type="text"
+                maxLength={1}
+                value={letter || ""}
+                onChange={(e) => {
+                  console.log("Letter input changed:", e.target.value);
+                  setLetter(e.target.value);
+                }}
+                className="w-full px-2 py-1 border rounded-md"
+              />
             </div>
           </TabsContent>
         </Tabs>
