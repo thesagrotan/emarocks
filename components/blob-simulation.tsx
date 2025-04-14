@@ -37,7 +37,7 @@ export function BlobSimulation() {
   // Simulation parameters as a single state object
   const [simulationParams, setSimulationParams] = useState<SimulationParams>({
     // Simulation Parameters - Default values
-    shapeCount: 15,
+    shapeCount: 100,
     edgePointCount: 25,
     minBlobSize: 10,
     repelDistance: 15,
