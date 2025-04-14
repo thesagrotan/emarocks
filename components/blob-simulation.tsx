@@ -28,6 +28,7 @@ export function BlobSimulation() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [isLiveEditing, setIsLiveEditing] = useState(false);
   const animationFrameIdRef = useRef<number | null>(null);
   const blobsRef = useRef<Blob[]>([]);
   const { theme, resolvedTheme } = useTheme();
@@ -73,6 +74,25 @@ export function BlobSimulation() {
 
   // --- Handle parameter updates ---
   const handleParamChange = (key: keyof SimulationParams, value: any) => {
+    // Set live editing flag if the animation is running and the parameter can be updated on-the-fly
+    const isStructuralParam = 
+      key === 'shapeCount' || 
+      key === 'edgePointCount' || 
+      key === 'minBlobSize';
+    
+    if (isAnimating && !isStructuralParam) {
+      setIsLiveEditing(true);
+      // Clear the flag after a short delay
+      setTimeout(() => setIsLiveEditing(false), 800);
+      
+      // Immediately update all blobs with the new parameter value if it's relevant
+      if (key === 'repelDistance' && blobsRef.current.length > 0) {
+        blobsRef.current.forEach(blob => {
+          blob.repelDistance = value;
+        });
+      }
+    }
+    
     setSimulationParams(prev => ({ ...prev, [key]: value }));
   };
 
@@ -120,11 +140,19 @@ export function BlobSimulation() {
     };
   }, [isMounted]);
 
+  // Only restart for structural changes that require re-initialization
   useEffect(() => {
     if (!isInitialized || !isMounted) return;
     handleRestart();
-  }, [simulationParams.shapeCount, simulationParams.edgePointCount, simulationParams.minBlobSize, isInitialized, isMounted]);
+  }, [
+    simulationParams.shapeCount, 
+    simulationParams.edgePointCount, 
+    simulationParams.minBlobSize, 
+    isInitialized, 
+    isMounted
+  ]);
 
+  // Update visual appearance without restart
   useEffect(() => {
     if (!isInitialized || !isMounted) return;
     draw();
@@ -317,11 +345,13 @@ export function BlobSimulation() {
         return; 
       }
 
+      // Read the latest parameters on each animation frame
+      // This allows for real-time changes to take effect immediately
       const { 
         springTension, containerMargin, isRoundedContainer,
         interactionStrength, maxExpansionFactor,
         gravity, damping, restrictedAreaEnabled,
-        restrictedAreaShape
+        restrictedAreaShape, speed, repelDistance
       } = simulationParams;
       
       const canvasWidth = 512;
@@ -330,18 +360,33 @@ export function BlobSimulation() {
       const shapeType = restrictedAreaEnabled ? restrictedAreaShape : null;
       const shapeParams = restrictedAreaEnabled ? restrictedAreaParams : null;
 
+      // Apply animation speed control - skip frames if speed < 1
+      if (speed < 1 && Math.random() > speed) {
+        // Just request next frame without computing
+        animationFrameIdRef.current = requestAnimationFrame(animate);
+        return;
+      }
+
       // --- Update Step ---
-      blobsRef.current.forEach((blob) => {
-        if (blob?.update) {
-          blob.update(
-            blobsRef.current, springTension,
-            canvasWidth, canvasHeight, containerMargin, isRoundedContainer,
-            interactionStrength, maxExpansionFactor,
-            gravity, damping,
-            shapeType, shapeParams, ctx
-          );
-        }
-      });
+      // For speed > 1, perform multiple updates per frame
+      const iterations = speed > 1 ? Math.min(Math.floor(speed), 3) : 1;
+      
+      for (let i = 0; i < iterations; i++) {
+        blobsRef.current.forEach((blob) => {
+          if (blob?.update) {
+            // Update each blob's repelDistance property with current value
+            blob.repelDistance = repelDistance;
+            
+            blob.update(
+              blobsRef.current, springTension,
+              canvasWidth, canvasHeight, containerMargin, isRoundedContainer,
+              interactionStrength, maxExpansionFactor,
+              gravity, damping,
+              shapeType, shapeParams, ctx
+            );
+          }
+        });
+      }
 
       // --- Draw Step ---
       draw();
@@ -572,6 +617,12 @@ export function BlobSimulation() {
           className={`block rounded-lg w-full h-full border border-neutral-300 dark:border-neutral-700 ${simulationParams.toolMode ? 'cursor-crosshair' : 'cursor-default'}`}
           style={{ backgroundColor: currentTheme === 'dark' ? simulationParams.darkBackgroundColor : simulationParams.backgroundColor }}
         />
+        {/* Live Editing Indicator */}
+        {isLiveEditing && (
+          <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-xs">
+            Updating...
+          </div>
+        )}
         {/* Canvas Overlays */}
         <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center pointer-events-none">
           {/* Play/Pause Button */}
@@ -631,6 +682,7 @@ export function BlobSimulation() {
         params={simulationParams} 
         onParamChange={handleParamChange}
         onRestart={handleRestart}
+        isAnimating={isAnimating}
       />
     </div>
   );

@@ -79,10 +79,13 @@ export class Blob {
     blobs.forEach((blobB) => {
       if (this.id === blobB.id) return;
 
+      // Use the same repelDistance for both blobs to ensure consistency
+      const effectiveRepelDistance = Math.max(this.repelDistance, blobB.repelDistance);
+      
       const distBetweenCentersSq = this.centre.distanceToSquared(blobB.centre);
       // Use radii squared for comparison to avoid sqrt
       const combinedRadii = this.maxRadius + blobB.maxRadius;
-      const interactionRangeSq = Math.pow(combinedRadii + this.repelDistance, 2);
+      const interactionRangeSq = Math.pow(combinedRadii + effectiveRepelDistance, 2);
 
       // Optimization: Broad phase check based on centers and radii + repel distance
       if (distBetweenCentersSq > interactionRangeSq) return;
@@ -94,10 +97,10 @@ export class Blob {
           const distSq = tempVec.lengthSq(); // Use squared distance
 
           // Apply repulsion force if within repelDistance squared
-          const repelDistSq = this.repelDistance * this.repelDistance;
+          const repelDistSq = effectiveRepelDistance * effectiveRepelDistance;
           if (distSq > 1e-12 && distSq < repelDistSq) { // Compare squared distances
             const dist = Math.sqrt(distSq);
-            const overlap = this.repelDistance - dist;
+            const overlap = effectiveRepelDistance - dist;
 
             // Calculate force magnitude based on overlap and strength
             let forceMagnitude = overlap * interactionStrength;

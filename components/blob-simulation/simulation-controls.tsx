@@ -7,18 +7,60 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SimulationParams } from "./types"
+import { Info } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface SimulationControlsProps {
   params: SimulationParams
   onParamChange: (key: keyof SimulationParams, value: any) => void
   onRestart: () => void
+  isAnimating?: boolean
 }
 
 export function SimulationControls({ 
   params, 
   onParamChange, 
-  onRestart 
+  onRestart,
+  isAnimating = false
 }: SimulationControlsProps) {
+  // Helper to determine if a parameter requires restart
+  const requiresRestart = (param: keyof SimulationParams): boolean => {
+    return ['shapeCount', 'edgePointCount', 'minBlobSize'].includes(param as string);
+  };
+
+  // Custom Label component with restart indicator
+  const ParamLabel = ({ 
+    htmlFor, 
+    param,
+    children 
+  }: { 
+    htmlFor: string, 
+    param: keyof SimulationParams,
+    children: React.ReactNode 
+  }) => {
+    const needsRestart = requiresRestart(param);
+    
+    return (
+      <div className="flex items-center gap-1">
+        <Label htmlFor={htmlFor} className="text-xs font-medium">
+          {children}
+        </Label>
+        {needsRestart && isAnimating && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3 w-3 text-amber-500" />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="text-xs">Requires restart</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+    );
+  };
+  
   return (
     <Card className="bg-white/80 dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 p-4 rounded-lg w-full max-w-[320px] flex-shrink-0 shadow-md backdrop-blur-sm">
       <div className="space-y-4">
@@ -27,7 +69,9 @@ export function SimulationControls({
         {/* Simulation Parameters */}
         <div className="grid grid-cols-1 gap-4">
           <div className="space-y-1">
-            <Label htmlFor="shapeCount" className="text-xs font-medium">Shape Count ({params.shapeCount})</Label>
+            <ParamLabel htmlFor="shapeCount" param="shapeCount">
+              Shape Count ({params.shapeCount})
+            </ParamLabel>
             <Slider 
               id="shapeCount" 
               min={1} 
@@ -38,7 +82,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="edgePointCount" className="text-xs font-medium">Edge Points ({params.edgePointCount})</Label>
+            <ParamLabel htmlFor="edgePointCount" param="edgePointCount">
+              Edge Points ({params.edgePointCount})
+            </ParamLabel>
             <Slider 
               id="edgePointCount" 
               min={5} 
@@ -49,7 +95,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="minBlobSize" className="text-xs font-medium">Min Size ({params.minBlobSize})</Label>
+            <ParamLabel htmlFor="minBlobSize" param="minBlobSize">
+              Min Size ({params.minBlobSize})
+            </ParamLabel>
             <Slider 
               id="minBlobSize" 
               min={5} 
@@ -60,7 +108,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="repelDistance" className="text-xs font-medium">Repel Dist ({params.repelDistance})</Label>
+            <ParamLabel htmlFor="repelDistance" param="repelDistance">
+              Repel Dist ({params.repelDistance})
+            </ParamLabel>
             <Slider 
               id="repelDistance" 
               min={1} 
@@ -71,7 +121,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="springTension" className="text-xs font-medium">Tension ({params.springTension.toFixed(2)})</Label>
+            <ParamLabel htmlFor="springTension" param="springTension">
+              Tension ({params.springTension.toFixed(2)})
+            </ParamLabel>
             <Slider 
               id="springTension" 
               min={0.01} 
@@ -82,7 +134,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="interactionStrength" className="text-xs font-medium">Interaction ({params.interactionStrength.toFixed(3)})</Label>
+            <ParamLabel htmlFor="interactionStrength" param="interactionStrength">
+              Interaction ({params.interactionStrength.toFixed(3)})
+            </ParamLabel>
             <Slider 
               id="interactionStrength" 
               min={0.001} 
@@ -93,7 +147,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="gravity" className="text-xs font-medium">Gravity ({params.gravity.toFixed(2)})</Label>
+            <ParamLabel htmlFor="gravity" param="gravity">
+              Gravity ({params.gravity.toFixed(2)})
+            </ParamLabel>
             <Slider 
               id="gravity" 
               min={-0.5} 
@@ -104,7 +160,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="damping" className="text-xs font-medium">Damping ({params.damping.toFixed(3)})</Label>
+            <ParamLabel htmlFor="damping" param="damping">
+              Damping ({params.damping.toFixed(3)})
+            </ParamLabel>
             <Slider 
               id="damping" 
               min={0.9} 
@@ -115,7 +173,9 @@ export function SimulationControls({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="maxExpansionFactor" className="text-xs font-medium">Max Expand ({params.maxExpansionFactor.toFixed(1)}x)</Label>
+            <ParamLabel htmlFor="maxExpansionFactor" param="maxExpansionFactor">
+              Max Expand ({params.maxExpansionFactor.toFixed(1)}x)
+            </ParamLabel>
             <Slider 
               id="maxExpansionFactor" 
               min={1} 
@@ -125,12 +185,28 @@ export function SimulationControls({
               onValueChange={(val) => onParamChange('maxExpansionFactor', val[0])} 
             />
           </div>
+          {/* Speed parameter - new addition */}
+          <div className="space-y-1">
+            <ParamLabel htmlFor="speed" param="speed">
+              Speed ({params.speed.toFixed(1)}x)
+            </ParamLabel>
+            <Slider 
+              id="speed" 
+              min={0.1} 
+              max={3} 
+              step={0.1} 
+              value={[params.speed]} 
+              onValueChange={(val) => onParamChange('speed', val[0])} 
+            />
+          </div>
         </div>
 
         {/* Container/Appearance Settings */}
         <div className="space-y-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center justify-between">
-            <Label htmlFor="containerMargin" className="text-xs font-medium">Container Margin</Label>
+            <ParamLabel htmlFor="containerMargin" param="containerMargin">
+              Container Margin
+            </ParamLabel>
             <input 
               type="number" 
               id="containerMargin" 
@@ -142,7 +218,9 @@ export function SimulationControls({
             />
           </div>
           <div className="flex items-center justify-between">
-            <Label htmlFor="show-border" className="text-sm">Show Border</Label>
+            <ParamLabel htmlFor="show-border" param="showBorder">
+              Show Border
+            </ParamLabel>
             <Switch 
               id="show-border" 
               checked={params.showBorder} 
@@ -150,7 +228,9 @@ export function SimulationControls({
             />
           </div>
           <div className="flex items-center justify-between">
-            <Label htmlFor="rounded-container" className="text-sm">Rounded Container</Label>
+            <ParamLabel htmlFor="rounded-container" param="isRoundedContainer">
+              Rounded Container
+            </ParamLabel>
             <Switch 
               id="rounded-container" 
               checked={params.isRoundedContainer} 
@@ -162,7 +242,9 @@ export function SimulationControls({
         {/* Restricted Area Settings */}
         <div className="space-y-3 pt-4 border-t border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center justify-between">
-            <Label htmlFor="restricted-area-enable" className="text-sm">Enable Obstacle</Label>
+            <ParamLabel htmlFor="restricted-area-enable" param="restrictedAreaEnabled">
+              Enable Obstacle
+            </ParamLabel>
             <Switch 
               id="restricted-area-enable" 
               checked={params.restrictedAreaEnabled} 
@@ -183,38 +265,27 @@ export function SimulationControls({
                 </select>
               </div>
               <div className="space-y-1">
-                <Label htmlFor="restrictedAreaSize" className="text-xs font-medium">Obstacle Size ({params.restrictedAreaSize})</Label>
+                <ParamLabel htmlFor="restrictedAreaSize" param="restrictedAreaSize">
+                  Obstacle Size ({params.restrictedAreaSize})
+                </ParamLabel>
                 <Slider 
                   id="restrictedAreaSize" 
-                  min={20} 
-                  max={200} 
-                  step={5} 
+                  min={10} 
+                  max={100} 
+                  step={1} 
                   value={[params.restrictedAreaSize]} 
                   onValueChange={(val) => onParamChange('restrictedAreaSize', val[0])} 
                 />
               </div>
-              {params.restrictedAreaShape === 'letter' && (
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="restrictedAreaLetter" className="text-xs font-medium">Letter</Label>
-                  <input 
-                    type="text" 
-                    id="restrictedAreaLetter" 
-                    maxLength={1} 
-                    value={params.restrictedAreaLetter} 
-                    onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value.toUpperCase() || 'A')} 
-                    className="w-10 text-center border rounded bg-transparent dark:border-neutral-700 px-1 text-sm uppercase"
-                  />
-                </div>
-              )}
             </>
           )}
         </div>
 
         {/* Color Settings */}
         <Tabs defaultValue="light-mode" className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
-          <TabsList className="grid w-full grid-cols-2 mb-3">
-            <TabsTrigger value="light-mode">Light Colors</TabsTrigger>
-            <TabsTrigger value="dark-mode">Dark Colors</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="light-mode">Light</TabsTrigger>
+            <TabsTrigger value="dark-mode">Dark</TabsTrigger>
           </TabsList>
           <TabsContent value="light-mode" className="space-y-3">
             <div className="flex items-center justify-between">
@@ -305,7 +376,19 @@ export function SimulationControls({
         </Tabs>
 
         {/* Restart Button */}
-        <Button onClick={onRestart} className="w-full mt-4">Restart Simulation</Button>
+        <Button 
+          onClick={onRestart} 
+          className="w-full mt-4" 
+          variant={isAnimating ? "destructive" : "default"}
+        >
+          Restart Simulation
+        </Button>
+        
+        {isAnimating && (
+          <p className="text-xs text-center text-muted-foreground mt-2">
+            Parameters with <Info className="h-3 w-3 text-amber-500 inline-block" /> require a restart to apply changes.
+          </p>
+        )}
       </div>
     </Card>
   )
