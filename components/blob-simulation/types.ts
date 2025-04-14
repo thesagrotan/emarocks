@@ -34,7 +34,7 @@ export interface SimulationParams {
 
   // Restricted Area / Static Obstacle
   restrictedAreaEnabled: boolean;
-  restrictedAreaShape: 'rectangle' | 'letter';
+  restrictedAreaShape: 'letter';
   restrictedAreaSize: number;
   restrictedAreaLetter: string;
   restrictedAreaMargin: number;

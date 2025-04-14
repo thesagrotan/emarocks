@@ -8,11 +8,13 @@ export class Particle {
   pos: Vector2;
   vel: Vector2;
   acc: Vector2;
+  stuckFrames?: number; // Track frames stuck in letter shape
 
   constructor(x: number, y: number) {
     this.pos = new Vector2(x, y);
     this.vel = new Vector2();
     this.acc = new Vector2();
+    this.stuckFrames = 0; // Initialize stuck counter
   }
 
   applyForce(force: Vector2) {

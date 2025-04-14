@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 interface SimulationControlsProps {
   params: SimulationParams
-  onParamChange: (key: keyof SimulationParams, value: any) => void
+  onParamChange: (key: string, value: any) => void
   onRestart: () => void
   isAnimating?: boolean
 }
@@ -254,24 +254,24 @@ export function SimulationControls({
           {params.restrictedAreaEnabled && (
             <>
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium">Obstacle Shape</Label>
-                <select 
-                  value={params.restrictedAreaShape} 
-                  onChange={(e) => onParamChange('restrictedAreaShape', e.target.value)} 
-                  className="text-xs border rounded bg-transparent dark:border-neutral-700 px-1 py-0.5"
-                >
-                  <option value="rectangle">Rectangle</option>
-                  <option value="letter">Letter</option>
-                </select>
+                <Label htmlFor="restrictedAreaLetter" className="text-xs font-medium">Letter</Label>
+                <input 
+                  type="text" 
+                  id="restrictedAreaLetter" 
+                  value={params.restrictedAreaLetter} 
+                  onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value.charAt(0))} 
+                  maxLength={1}
+                  className="w-16 text-center border rounded bg-transparent dark:border-neutral-700 px-1 text-sm"
+                />
               </div>
               <div className="space-y-1">
                 <ParamLabel htmlFor="restrictedAreaSize" param="restrictedAreaSize">
-                  Obstacle Size ({params.restrictedAreaSize})
+                  Letter Size ({params.restrictedAreaSize})
                 </ParamLabel>
                 <Slider 
                   id="restrictedAreaSize" 
                   min={10} 
-                  max={100} 
+                  max={400} 
                   step={1} 
                   value={[params.restrictedAreaSize]} 
                   onValueChange={(val) => onParamChange('restrictedAreaSize', val[0])} 

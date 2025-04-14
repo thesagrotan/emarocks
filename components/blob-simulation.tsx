@@ -10,7 +10,7 @@ import { useLayoutEffect } from "react"
 // Import refactored components and types
 import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
-import { hexToRgba, poissonDiskSampling, drawLetter } from "./blob-simulation/utils"
+import { hexToRgba, poissonDiskSampling, drawLetter, isPointInLetter } from "./blob-simulation/utils"
 import { SimulationParams, SimulationColors, RestrictedAreaParams } from "./blob-simulation/types"
 
 // Safely access window properties with a function that only runs client-side
@@ -73,7 +73,7 @@ export function BlobSimulation() {
   });
 
   // --- Handle parameter updates ---
-  const handleParamChange = (key: keyof SimulationParams, value: any) => {
+  const handleParamChange = (key: string, value: any) => {
     // Set live editing flag if the animation is running and the parameter can be updated on-the-fly
     const isStructuralParam = 
       key === 'shapeCount' || 
@@ -215,8 +215,8 @@ export function BlobSimulation() {
       canvas.style.height = `${canvasSize}px`;
       ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
 
-      const logicalWidth = canvasSize - containerMargin * 2;
-      const logicalHeight = canvasSize - containerMargin * 2;
+      const logicalWidth = canvasSize - containerMargin;
+      const logicalHeight = canvasSize - containerMargin;
       const minBlobDist = (minBlobSize * 2) + repelDistance;
       const pdsRestrictedArea = calculateRestrictedAreaParams(logicalWidth, logicalHeight);
 
@@ -239,11 +239,98 @@ export function BlobSimulation() {
         edgePointCount, minBlobSize, repelDistance
       ));
 
+      // Fix any blobs that might be overlapping with the letter
+      if (simulationParams.restrictedAreaEnabled) {
+        fixBlobsOverlappingWithLetter(ctx);
+      }
+
       console.log("Initialization complete.");
       draw();
     } catch (error) {
       console.error("Error in initializeSimulation:", error);
     }
+  };
+
+  /**
+   * Detect and relocate any blobs that overlap with the letter shape
+   */
+  const fixBlobsOverlappingWithLetter = (ctx: CanvasRenderingContext2D) => {
+    const canvasWidth = 512;
+    const canvasHeight = 512;
+    const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
+    
+    if (!restrictedAreaParams || !restrictedAreaParams.letter) return;
+    
+    const letterCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
+    const letterCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
+    const letterSize = restrictedAreaParams.size;
+    const { containerMargin } = simulationParams;
+
+    // First, check each blob to see if its center or any particles are inside the letter
+    blobsRef.current.forEach((blob, blobIndex) => {
+      // Quick check if blob center is inside letter
+      const centerInLetter = isPointInLetter(
+        ctx,
+        restrictedAreaParams.letter!,
+        letterCenterX,
+        letterCenterY,
+        letterSize,
+        blob.centre.x,
+        blob.centre.y
+      );
+      
+      // Check if any particles are inside letter (only if center isn't in letter)
+      let anyParticleInLetter = false;
+      if (!centerInLetter) {
+        // Only check particles if center isn't already in letter
+        for (const particle of blob.particles) {
+          if (isPointInLetter(
+            ctx,
+            restrictedAreaParams.letter!,
+            letterCenterX,
+            letterCenterY,
+            letterSize,
+            particle.pos.x,
+            particle.pos.y
+          )) {
+            anyParticleInLetter = true;
+            break;
+          }
+        }
+      }
+      
+      // If blob needs relocation
+      if (centerInLetter || anyParticleInLetter) {
+        console.log(`Blob ${blobIndex} overlaps with letter - relocating`);
+        
+        // Strategy: Move the blob to a random position outside the restricted area
+        let newX: number, newY: number;
+        do {
+          newX = containerMargin + Math.random() * (canvasWidth - 2 * containerMargin);
+          newY = containerMargin + Math.random() * (canvasHeight - 2 * containerMargin);
+        } while (isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY));
+        
+        // Make sure the new position is within canvas bounds
+        const safeX = Math.max(containerMargin + blob.maxRadius, 
+                    Math.min(canvasWidth - containerMargin - blob.maxRadius, newX));
+        const safeY = Math.max(containerMargin + blob.maxRadius, 
+                    Math.min(canvasHeight - containerMargin - blob.maxRadius, newY));
+        
+        // Calculate offset from current to new position
+        const offsetX = safeX - blob.centre.x;
+        const offsetY = safeY - blob.centre.y;
+        
+        // Move all particles by this offset
+        blob.particles.forEach(particle => {
+          particle.pos.x += offsetX;
+          particle.pos.y += offsetY;
+        });
+        
+        // Update blob center
+        blob.centre.x = safeX;
+        blob.centre.y = safeY;
+      }
+    });
   };
 
   const draw = () => {
@@ -302,28 +389,28 @@ export function BlobSimulation() {
           ctx.strokeRect(containerMargin, containerMargin, canvasWidth - containerMargin * 2, canvasHeight - containerMargin * 2);
         }
       }
-
-      // Draw blobs
-      blobsRef.current.forEach((blob) => {
-        if (blob?.draw) blob.draw(ctx, colors.fill, colors.border);
-      });
-
-      // Draw static obstacle/restricted area visualization
+      
+      // Draw static obstacle/restricted area BEFORE blobs (important for visual clarity)
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams) {
-        ctx.lineWidth = 2;
-        if (restrictedAreaShape === 'rectangle') {
-          ctx.strokeStyle = colors.obstacle;
-          ctx.strokeRect(restrictedAreaParams.x, restrictedAreaParams.y, restrictedAreaParams.size, restrictedAreaParams.size);
-        } else if (restrictedAreaShape === 'letter' && restrictedAreaParams.letter) {
+        if (restrictedAreaParams.letter) {
+          // Draw with strong color and larger font for better visibility
+          ctx.lineWidth = 2;
           drawLetter(
-            ctx, restrictedAreaParams.letter,
+            ctx, 
+            restrictedAreaParams.letter,
             restrictedAreaParams.x + restrictedAreaParams.size / 2,
             restrictedAreaParams.y + restrictedAreaParams.size / 2,
-            restrictedAreaParams.size, colors.obstacle
+            restrictedAreaParams.size, 
+            colors.obstacle
           );
         }
       }
+
+      // Draw blobs AFTER letter so they appear above it visually
+      blobsRef.current.forEach((blob) => {
+        if (blob?.draw) blob.draw(ctx, colors.fill, colors.border);
+      });
     } catch (error) {
       console.error("Error during draw cycle:", error);
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
@@ -358,7 +445,7 @@ export function BlobSimulation() {
       const canvasHeight = 512;
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       const shapeType = restrictedAreaEnabled ? restrictedAreaShape : null;
-      const shapeParams = restrictedAreaEnabled ? restrictedAreaParams : null;
+      const shapeParams = restrictedAreaEnabled && restrictedAreaParams ? restrictedAreaParams : null;
 
       // Apply animation speed control - skip frames if speed < 1
       if (speed < 1 && Math.random() > speed) {
@@ -491,19 +578,15 @@ export function BlobSimulation() {
       });
 
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
-      if (restrictedAreaEnabled && restrictedAreaParams) {
-        const obstacleAttrs = `fill="none" stroke="${colors.obstacle}" stroke-width="2"`;
-        if (restrictedAreaShape === 'rectangle') {
-          svgContent += `<rect x="${restrictedAreaParams.x}" y="${restrictedAreaParams.y}" width="${restrictedAreaParams.size}" height="${restrictedAreaParams.size}" ${obstacleAttrs} />`;
-        } else if (restrictedAreaShape === 'letter' && restrictedAreaParams.letter) {
-          svgContent += `<text x="${restrictedAreaParams.x + restrictedAreaParams.size / 2}" y="${restrictedAreaParams.y + restrictedAreaParams.size / 2}" font-family="Arial" font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
-        }
+      if (restrictedAreaEnabled && restrictedAreaParams && restrictedAreaParams.letter) {
+        svgContent += `<text x="${restrictedAreaParams.x + restrictedAreaParams.size / 2}" y="${restrictedAreaParams.y + restrictedAreaParams.size / 2}" font-family="Arial" font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
       }
 
       svgContent += `</svg>`;
 
-      const blob = new Blob([svgContent], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
+      // Use window.Blob to disambiguate from our Blob class
+      const svgBlob = new window.Blob([svgContent], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
       const link = document.createElement("a");
       link.href = url;
       link.download = "blob-simulation.svg";
@@ -556,13 +639,51 @@ export function BlobSimulation() {
 
         const restrictedParams = calculateRestrictedAreaParams(512, 512);
         if (simulationParams.restrictedAreaEnabled && restrictedParams) {
-          const raMinX = restrictedParams.x - restrictedParams.margin;
-          const raMaxX = restrictedParams.x + restrictedParams.size + restrictedParams.margin;
-          const raMinY = restrictedParams.y - restrictedParams.margin;
-          const raMaxY = restrictedParams.y + restrictedParams.size + restrictedParams.margin;
-          if (x >= raMinX && x <= raMaxX && y >= raMinY && y <= raMaxY) {
-            console.warn("Cannot add shape: inside restricted area.");
-            return;
+          // Check for the letter boundary
+          if (restrictedParams.letter) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const letterCenterX = restrictedParams.x + restrictedParams.size / 2;
+              const letterCenterY = restrictedParams.y + restrictedParams.size / 2;
+              
+              // Check if the point is inside the letter's actual shape
+              const isInLetterShape = isPointInLetter(
+                ctx,
+                restrictedParams.letter,
+                letterCenterX,
+                letterCenterY,
+                restrictedParams.size,
+                x,
+                y
+              );
+              
+              if (isInLetterShape) {
+                console.warn("Cannot add shape: inside letter shape.");
+                return;
+              }
+              
+              // Still check the margin around the letter
+              const raMinX = restrictedParams.x - restrictedParams.margin;
+              const raMaxX = restrictedParams.x + restrictedParams.size + restrictedParams.margin;
+              const raMinY = restrictedParams.y - restrictedParams.margin;
+              const raMaxY = restrictedParams.y + restrictedParams.size + restrictedParams.margin;
+              
+              if (x >= raMinX && x <= raMaxX && y >= raMinY && y <= raMaxY) {
+                // The point is within the margin boundary, but we already checked if it's in the letter shape
+                // So this is the margin area around the letter, not the letter itself
+                // You can decide if you want to allow blob placement in this area or not
+              }
+            }
+          } else {
+            // Fallback to rectangular check if letter property is not available
+            const raMinX = restrictedParams.x - restrictedParams.margin;
+            const raMaxX = restrictedParams.x + restrictedParams.size + restrictedParams.margin;
+            const raMinY = restrictedParams.y - restrictedParams.margin;
+            const raMaxY = restrictedParams.y + restrictedParams.size + restrictedParams.margin;
+            if (x >= raMinX && x <= raMaxX && y >= raMinY && y <= raMaxY) {
+              console.warn("Cannot add shape: inside restricted area.");
+              return;
+            }
           }
         }
 

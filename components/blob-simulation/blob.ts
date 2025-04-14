@@ -1,6 +1,7 @@
 import { Vector2 } from "three";
 import { Particle } from "./particle";
 import { Spring } from "./spring";
+import { isPointInLetter } from "./utils"; // Import the isPointInLetter function
 
 // Temporary vector for calculations
 const tempVec = new Vector2();
@@ -183,65 +184,106 @@ export class Blob {
   // Collision with Static Obstacles
   collideWithStaticShape(
     ctx: CanvasRenderingContext2D,
-    shapeType: 'rectangle' | 'letter' | null,
+    shapeType: 'letter' | null,
     shapeParams: { x: number; y: number; size: number; letter?: string } | null
   ) {
-    if (!shapeType || !shapeParams) return;
+    if (!shapeType || !shapeParams || !shapeParams.letter) return;
 
-    let shapeBounds: { minX: number, minY: number, maxX: number, maxY: number } | null = null;
-
-    if (shapeType === 'rectangle') {
-      shapeBounds = {
+    // For letter shapes
+    if (shapeType === 'letter' && shapeParams.letter) {
+      const letterCenterX = shapeParams.x + shapeParams.size / 2;
+      const letterCenterY = shapeParams.y + shapeParams.size / 2;
+      
+      // Cache letter bounds for optimization
+      const letterBounds = {
         minX: shapeParams.x,
         minY: shapeParams.y,
         maxX: shapeParams.x + shapeParams.size,
-        maxY: shapeParams.y + shapeParams.size
+        maxY: shapeParams.y + shapeParams.size,
       };
-    } else if (shapeType === 'letter' && shapeParams.letter && ctx) {
-      const letterWidth = shapeParams.size * 0.8;
-      const letterHeight = shapeParams.size;
-      const letterCenterX = shapeParams.x + shapeParams.size / 2;
-      const letterCenterY = shapeParams.y + shapeParams.size / 2;
-
-      shapeBounds = {
-        minX: letterCenterX - letterWidth / 2,
-        minY: letterCenterY - letterHeight / 2,
-        maxX: letterCenterX + letterWidth / 2,
-        maxY: letterCenterY + letterHeight / 2,
-      };
-    }
-
-    if (!shapeBounds) return;
-
-    this.particles.forEach((particle) => {
-      if (
-        particle.pos.x > shapeBounds.minX &&
-        particle.pos.x < shapeBounds.maxX &&
-        particle.pos.y > shapeBounds.minY &&
-        particle.pos.y < shapeBounds.maxY
-      ) {
-        const dxMin = particle.pos.x - shapeBounds.minX;
-        const dxMax = shapeBounds.maxX - particle.pos.x;
-        const dyMin = particle.pos.y - shapeBounds.minY;
-        const dyMax = shapeBounds.maxY - particle.pos.y;
-
-        const minDist = Math.min(dxMin, dxMax, dyMin, dyMax);
-        const pushForce = new Vector2();
-        let overlap = 0;
-
-        if (minDist === dxMin) { pushForce.set(-1, 0); overlap = dxMin; }
-        else if (minDist === dxMax) { pushForce.set(1, 0); overlap = dxMax; }
-        else if (minDist === dyMin) { pushForce.set(0, -1); overlap = dyMin; }
-        else { pushForce.set(0, 1); overlap = dyMax; }
-
-        // Apply a smaller, continuous force
-        pushForce.multiplyScalar(0.2); // Smaller push strength
-        particle.applyForce(pushForce);
-
-        // Apply damping on collision
-        particle.vel.multiplyScalar(0.5); // Stronger damping on static collision
+      
+      // Check ALL particles for collision with the letter shape
+      for (let i = 0; i < this.particles.length; i++) {
+        const particle = this.particles[i];
+        
+        // Quick bounds check first (simple optimization)
+        if (
+          particle.pos.x >= letterBounds.minX - 5 && 
+          particle.pos.x <= letterBounds.maxX + 5 && 
+          particle.pos.y >= letterBounds.minY - 5 && 
+          particle.pos.y <= letterBounds.maxY + 5
+        ) {
+          // Test if particle is actually inside the letter shape
+          const isInside = isPointInLetter(
+            ctx,
+            shapeParams.letter,
+            letterCenterX,
+            letterCenterY,
+            shapeParams.size,
+            particle.pos.x,
+            particle.pos.y
+          );
+          
+          if (isInside) {
+            // Calculate vector from center of letter to particle
+            const toParticle = new Vector2(
+              particle.pos.x - letterCenterX,
+              particle.pos.y - letterCenterY
+            );
+            
+            // If vector is near zero, use a random direction
+            if (toParticle.lengthSq() < 0.1) {
+              const randomAngle = Math.random() * Math.PI * 2;
+              toParticle.set(Math.cos(randomAngle), Math.sin(randomAngle));
+            }
+            
+            // Normalize and apply a strong push force
+            toParticle.normalize();
+            
+            // Use a strong push force
+            const pushForce = 3.0;
+            toParticle.multiplyScalar(pushForce);
+            
+            // Apply this strong force to immediately push the particle out
+            particle.applyForce(toParticle);
+            
+            // Also directly modify velocity to ensure immediate response
+            const escapeVelocity = toParticle.clone().multiplyScalar(0.5);
+            particle.vel.add(escapeVelocity);
+            
+            // Apply strong damping to other directions to prevent oscillation
+            const dampingFactor = 0.3;
+            particle.vel.multiplyScalar(dampingFactor);
+            
+            // For severely stuck particles, teleport them slightly outside
+            if (particle.stuckFrames === undefined) {
+              particle.stuckFrames = 0;
+            }
+            
+            particle.stuckFrames++;
+            
+            // If stuck for multiple frames, teleport it out
+            if (particle.stuckFrames > 5) {
+              // Calculate escape position (outside the letter)
+              const escapeDist = Math.max(10, shapeParams.size * 0.1);
+              const escapePos = toParticle.clone().normalize().multiplyScalar(escapeDist);
+              
+              // Move particle directly
+              particle.pos.x += escapePos.x;
+              particle.pos.y += escapePos.y;
+              
+              // Reset stuck counter
+              particle.stuckFrames = 0;
+            }
+          } else {
+            // Not inside, reset stuck counter if it exists
+            if (particle.stuckFrames !== undefined) {
+              particle.stuckFrames = 0;
+            }
+          }
+        }
       }
-    });
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D, fillColor: string, strokeColor: string) {
@@ -306,7 +348,7 @@ export class Blob {
     maxExpansionFactor: number,
     gravity: number,
     damping: number,
-    staticShapeType: 'rectangle' | 'letter' | null,
+    staticShapeType: 'letter' | null,
     staticShapeParams: { x: number; y: number; size: number; letter?: string } | null,
     ctx: CanvasRenderingContext2D | null
   ) {
