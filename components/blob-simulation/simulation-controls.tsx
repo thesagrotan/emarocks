@@ -78,6 +78,59 @@ export function SimulationControls({
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
   const [fontsLoading, setFontsLoading] = useState(false);
 
+  // Download settings as Markdown file
+  const handleDownloadSettings = () => {
+    const md = [
+      "# Blob Simulation Settings",
+      "",
+      "```json",
+      JSON.stringify(params, null, 2),
+      "```",
+      ""
+    ].join("\n");
+    const blob = new window.Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "blob-simulation-settings.md";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Load settings from Markdown file
+  const handleLoadSettings = async () => {
+    try {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".md,text/markdown";
+      input.onchange = async (e: any) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const text = await file.text();
+        // Extract JSON code block
+        const match = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (!match) {
+          alert("No JSON code block found in file.");
+          return;
+        }
+        try {
+          const parsed = JSON.parse(match[1]);
+          // Update all params
+          Object.entries(parsed).forEach(([key, value]) => {
+            onParamChange(key, value);
+          });
+        } catch (err) {
+          alert("Failed to parse JSON from file.");
+        }
+      };
+      input.click();
+    } catch (err) {
+      alert("Failed to load settings file.");
+    }
+  };
+
   return (
     <Card className="w-full max-w-[320px] h-[500px] overflow-y-auto">
       <div className="p-4 space-y-4">
@@ -89,7 +142,23 @@ export function SimulationControls({
         >
           Restart Simulation
         </Button>
-
+        {/* Download/Load Settings Buttons */}
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleDownloadSettings}
+            className="w-full"
+          >
+            Download Settings (.md)
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleLoadSettings}
+            className="w-full"
+          >
+            Load Settings (.md)
+          </Button>
+        </div>
         {/* Shape Settings */}
         <div className="space-y-3">
           <div className="space-y-1">
@@ -226,7 +295,7 @@ export function SimulationControls({
             <Slider 
               id="speed" 
               min={0} 
-              max={2} 
+              max={10} 
               step={0.1} 
               value={[params.speed]} 
               onValueChange={(val) => onParamChange('speed', val[0])}
