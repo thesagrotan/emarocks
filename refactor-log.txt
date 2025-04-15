@@ -1,0 +1,10 @@
+Refactor Log
+
+1. [Planned] Extract utility functions from blob-simulation/utils.ts to a new shared utils directory.
+2. [Planned] Create a /components/shared directory for base components and shared logic.
+3. [Planned] Refactor context and hooks in blob-simulation to separate files for maintainability.
+4. [Planned] Use barrel files (index.ts) for easier imports in shared and blob-simulation directories.
+5. [Planned] Add or improve comments and documentation for complex logic.
+6. [Planned] Ensure all prop types are clear and correct in custom components.
+7. [Planned] Memoize expensive calculations and derived values in blob-simulation.
+8. [Planned] Do not touch /components/ui (shadcn) folder as per instructions.

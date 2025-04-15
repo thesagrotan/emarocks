@@ -10,7 +10,10 @@ import { useLayoutEffect } from "react"
 // Import refactored components and types
 import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
-import { hexToRgba, poissonDiskSampling, drawLetter, isPointInLetter, createLetterPath, findOptimalBlobPlacement, isOverlappingOtherBlobs, letterShapeCache, getLetterVisualBounds } from "./blob-simulation/utils"
+import { hexToRgba, poissonDiskSampling } from "@/shared/utils"
+import { SimulationParamsContext } from "./blob-simulation/context"
+import { useSimulationParams } from "./blob-simulation/hooks"
+import { drawLetter, isPointInLetter, createLetterPath, findOptimalBlobPlacement, isOverlappingOtherBlobs, letterShapeCache, getLetterVisualBounds } from "./blob-simulation/utils"
 import { SimulationParams, SimulationColors, RestrictedAreaParams } from "./blob-simulation/types"
 
 // Safely access window properties with a function that only runs client-side
@@ -354,6 +357,30 @@ export function BlobSimulation() {
             }
           } while (attempts < maxAttempts);
         }
+      }
+
+      // --- Remove any blobs that are in the restricted area after distribution ---
+      if (pdsRestrictedArea?.letter) {
+        const letterCenterXCheck = pdsRestrictedArea.x + pdsRestrictedArea.size / 2;
+        const letterCenterYCheck = pdsRestrictedArea.y + pdsRestrictedArea.size / 2;
+        const letterSizeCheck = pdsRestrictedArea.size;
+        const fontFamilyCheck = simulationParams.fontFamily;
+        const letterDisplayColorCheck = letterDisplayColor;
+
+        blobsRef.current = blobsRef.current.filter(blob => {
+          // Remove any blob whose center is inside the restricted area letter
+          return !isPointInLetter(
+            ctx,
+            pdsRestrictedArea.letter,
+            letterCenterXCheck,
+            letterCenterYCheck,
+            letterSizeCheck,
+            blob.centre.x,
+            blob.centre.y,
+            letterDisplayColorCheck,
+            fontFamilyCheck
+          );
+        });
       }
 
       console.log("Initialization complete.");
@@ -788,6 +815,9 @@ export function BlobSimulation() {
       const { toolMode, containerMargin, minBlobSize, repelDistance, edgePointCount, letterColor, darkLetterColor } = simulationParams;
       if (!toolMode) return;
 
+      // Step 1: User clicks on canvas
+      console.log("[Step 1] Canvas clicked. Tool mode:", toolMode);
+
       const rect = canvas.getBoundingClientRect();
       const dpi = getDevicePixelRatio();
       const scaleX = canvas.width / dpi / rect.width;
@@ -796,57 +826,26 @@ export function BlobSimulation() {
       const rawY = (event.clientY - rect.top) * scaleY;
 
       if (toolMode === 'add') {
-        // Check basic container bounds
+        // Step 2: Check if click is inside container bounds
+        console.log("[Step 2] Checking if click is inside container bounds...");
         if (rawX < containerMargin || rawX > 512 - containerMargin || 
             rawY < containerMargin || rawY > 512 - containerMargin) {
           console.warn("Cannot add shape: click is outside the container margin.");
           return;
         }
 
-        // Get optimal placement near the clicked position
+        // Step 3: Place the new blob exactly where the user clicked
         let x = rawX, y = rawY;
-        const restrictedParams = calculateRestrictedAreaParams(512, 512);
-        
-        if (simulationParams.restrictedAreaEnabled && restrictedParams && restrictedParams.letter) {
-          const letterCenterX = restrictedParams.x + restrictedParams.size / 2;
-          const letterCenterY = restrictedParams.y + restrictedParams.size / 2;
-          
-          // Use optimal placement algorithm
-          const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
-          const optimalPos = findOptimalBlobPlacement(
-            ctx,
-            blobsRef.current,
-            restrictedParams.letter,
-            letterCenterX,
-            letterCenterY,
-            restrictedParams.size,
-            512,
-            512,
-            containerMargin,
-            letterDisplayColor,
-            restrictedParams.fontFamily // <-- Pass fontFamily
-          );
-          
-          x = optimalPos.x;
-          y = optimalPos.y;
-        }
+        console.log("[Step 3] Placing new blob exactly at click position:", x, y);
 
-        // Check if new blob would overlap with existing blobs
-        const isOverlapping = blobsRef.current.some(blob => {
-          if (!blob || !blob.centre || typeof blob.maxRadius === 'undefined') return false;
-          const distSq = new Vector2(x, y).distanceToSquared(blob.centre);
-          const minAllowedDistSq = Math.pow(blob.maxRadius + minBlobSize + repelDistance, 2);
-          return distSq < minAllowedDistSq;
-        });
+        // Optionally, move blobs away if you want to make space (keep or remove as needed)
+        // ...existing code for moving blobs away if desired...
 
-        if (isOverlapping) {
-          console.warn("Cannot add shape: potential overlap with existing shapes.");
-          return;
-        }
-
+        // Step 4: Place the new blob at the chosen position
         const newBlob = new Blob(x, y, edgePointCount, minBlobSize, repelDistance);
         blobsRef.current.push(newBlob);
-        console.log(`Added new blob at ${x.toFixed(1)}, ${y.toFixed(1)}`);
+        console.log("[Step 4] New blob added. Redrawing...");
+        draw();
       } else if (toolMode === 'remove') {
         // Remove blobs near click
         let removedCount = 0;
@@ -884,98 +883,86 @@ export function BlobSimulation() {
 
   // --- JSX ---
   return (
-    <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6">
-      {/* Canvas Container */}
-      <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
-        {/* Canvas Element */}
-        <canvas
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          className={`block rounded-lg w-full h-full border border-neutral-300 dark:border-neutral-700 ${simulationParams.toolMode ? 'cursor-crosshair' : 'cursor-default'}`}
-          style={{ backgroundColor: currentTheme === 'dark' ? simulationParams.darkBackgroundColor : simulationParams.backgroundColor }}
-        />
-        {/* Live Editing Indicator */}
-        {isLiveEditing && (
-          <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-xs">
-            Updating...
-          </div>
-        )}
-        {/* Canvas Overlays */}
-        <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center pointer-events-none">
-          {/* Play/Pause Button */}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleAnimation}
-            className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
-            aria-label={isAnimating ? 'Pause simulation' : 'Play simulation'}
-          >
-            {isAnimating ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-          </Button>
-
-          {/* Tool Buttons */}
-          <div className="flex gap-2 pointer-events-auto">
-            <Button
-              variant="outline" 
-              size="icon"
-              onClick={() => setSimulationParams(prev => ({ 
-                ...prev, 
-                toolMode: prev.toolMode === 'add' ? null : 'add' 
-              }))}
-              className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${simulationParams.toolMode === 'add' ? 'ring-2 ring-white' : ''}`}
-              aria-label="Add Shape Tool"
-            >
-              <Plus className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="outline" 
-              size="icon"
-              onClick={() => setSimulationParams(prev => ({ 
-                ...prev, 
-                toolMode: prev.toolMode === 'remove' ? null : 'remove' 
-              }))}
-              className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${simulationParams.toolMode === 'remove' ? 'ring-2 ring-white' : ''}`}
-              aria-label="Remove Shape Tool"
-            >
-              <Eraser className="w-5 h-5" />
-            </Button>
+    <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
+      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6">
+        {/* Canvas Container */}
+        <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
+          {/* Canvas Element */}
+          <canvas
+            ref={canvasRef}
+            onClick={handleCanvasClick}
+            className={`block rounded-lg w-full h-full border border-neutral-300 dark:border-neutral-700 ${simulationParams.toolMode ? 'cursor-crosshair' : 'cursor-default'}`}
+            style={{ backgroundColor: currentTheme === 'dark' ? simulationParams.darkBackgroundColor : simulationParams.backgroundColor }}
+          />
+          {/* Live Editing Indicator */}
+          {isLiveEditing && (
+            <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-xs">
+              Updating...
+            </div>
+          )}
+          {/* Canvas Overlays */}
+          <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center pointer-events-none">
+            {/* Play/Pause Button */}
             <Button
               variant="outline"
               size="icon"
-              onClick={() => {
-                setSimulationParams(prev => ({
-                  ...prev,
-                  restrictedAreaX: undefined,
-                  restrictedAreaY: undefined
-                }));
-              }}
-              className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full"
-              aria-label="Center Letter"
+              onClick={toggleAnimation}
+              className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
+              aria-label={isAnimating ? 'Pause simulation' : 'Play simulation'}
             >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="12" r="4"/><line x1="10" y1="2" x2="10" y2="8"/><line x1="10" y1="16" x2="10" y2="18"/></svg>
+              {isAnimating ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+            </Button>
+
+            {/* Tool Buttons */}
+            <div className="flex gap-2 pointer-events-auto">
+              <Button
+                variant="outline" 
+                size="icon"
+                onClick={() => setSimulationParams(prev => ({ 
+                  ...prev, 
+                  toolMode: prev.toolMode === 'add' ? null : 'add' 
+                }))}
+                className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${simulationParams.toolMode === 'add' ? 'ring-2 ring-white' : ''}`}
+                aria-label="Add Shape Tool"
+              >
+                <Plus className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="outline" 
+                size="icon"
+                onClick={() => setSimulationParams(prev => ({ 
+                  ...prev, 
+                  toolMode: prev.toolMode === 'remove' ? null : 'remove' 
+                }))}
+                className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${simulationParams.toolMode === 'remove' ? 'ring-2 ring-white' : ''}`}
+                aria-label="Remove Shape Tool"
+              >
+                <Eraser className="w-5 h-5" />
+              </Button>
+
+            </div>
+
+            {/* Download Button */}
+            <Button
+              variant="outline" 
+              size="icon"
+              onClick={downloadSVG}
+              className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
+              aria-label="Download as SVG"
+            >
+              <Download className="w-5 h-5" />
             </Button>
           </div>
-
-          {/* Download Button */}
-          <Button
-            variant="outline" 
-            size="icon"
-            onClick={downloadSVG}
-            className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
-            aria-label="Download as SVG"
-          >
-            <Download className="w-5 h-5" />
-          </Button>
         </div>
-      </div>
 
-      {/* Settings Panel */}
-      <SimulationControls 
-        params={simulationParams} 
-        onParamChange={handleParamChange}
-        onRestart={handleRestart}
-        isAnimating={isAnimating}
-      />
-    </div>
+        {/* Settings Panel */}
+        <SimulationControls 
+          params={simulationParams} 
+          onParamChange={handleParamChange}
+          onRestart={handleRestart}
+          isAnimating={isAnimating}
+        />
+      </div>
+    </SimulationParamsContext.Provider>
   );
 }

@@ -1,5 +1,6 @@
 import { Vector2 } from 'three';
 import { Blob as SimBlob } from './blob';  // Rename import to avoid conflict with browser's Blob
+import { hexToRgba, poissonDiskSampling } from "@/shared/utils";
 
 // Simulation utilities
 
