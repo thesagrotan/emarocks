@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Download, Pause, Play, Plus, Eraser } from "lucide-react"
+import { Download, Pause, Play, Plus, Eraser, Move } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 import { Vector2 } from "three"
@@ -10,7 +10,7 @@ import { useLayoutEffect } from "react"
 // Import refactored components and types
 import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
-import { hexToRgba, poissonDiskSampling, drawLetter, isPointInLetter } from "./blob-simulation/utils"
+import { hexToRgba, poissonDiskSampling, drawLetter, isPointInLetter, createLetterPath, findOptimalBlobPlacement, isOverlappingOtherBlobs, letterShapeCache, getLetterVisualBounds } from "./blob-simulation/utils"
 import { SimulationParams, SimulationColors, RestrictedAreaParams } from "./blob-simulation/types"
 
 // Safely access window properties with a function that only runs client-side
@@ -20,6 +20,8 @@ const getDevicePixelRatio = () => {
   }
   return 1;
 };
+
+const STORAGE_KEY = 'blob-simulation-settings';
 
 // --- React Component ---
 export function BlobSimulation() {
@@ -33,44 +35,71 @@ export function BlobSimulation() {
   const blobsRef = useRef<Blob[]>([]);
   const { theme, resolvedTheme } = useTheme();
   const currentTheme = resolvedTheme || theme || "light";
+  const lastFrameTimeRef = useRef<number>(0);
+  const targetFPSRef = useRef<number>(60);
+  const frameIntervalRef = useRef<number>(1000 / 60);
 
-  // Simulation parameters as a single state object
-  const [simulationParams, setSimulationParams] = useState<SimulationParams>({
-    // Simulation Parameters - Default values
-    shapeCount: 100,
-    edgePointCount: 25,
-    minBlobSize: 10,
-    repelDistance: 15,
-    springTension: 0.2,
-    interactionStrength: 0.015,
-    gravity: 0,
-    damping: 0.98,
-    maxExpansionFactor: 2.5,
-    speed: 1,
+  // Load saved settings from localStorage on mount
+  const [simulationParams, setSimulationParams] = useState<SimulationParams>(() => {
+    if (typeof window !== 'undefined') {
+      const savedSettings = localStorage.getItem(STORAGE_KEY);
+      if (savedSettings) {
+        try {
+          return JSON.parse(savedSettings);
+        } catch (e) {
+          console.error('Failed to parse saved settings:', e);
+        }
+      }
+    }
+    // Return default settings if no saved settings exist
+    return {
+      shapeCount: 250,
+      edgePointCount: 20,
+      minBlobSize: 4, // Reduced from 8 to 4
+      repelDistance: 2, // Reduced from 10 to 2
+      springTension: 0.35, // Slightly increased for better stability at small sizes
+      interactionStrength: 0.06, // Slightly increased for better small blob interaction
+      gravity: 0,
+      damping: 0.8,
+      maxExpansionFactor: 1.3,
+      speed: 1,
 
-    // Container/Appearance
-    containerMargin: 20,
-    isRoundedContainer: false,
-    showBorder: true,
-    backgroundColor: "#aac9ca",
-    darkBackgroundColor: "#1a2b2f",
-    blobFillColor: "#ffffff",
-    blobFillOpacity: 0.3,
-    darkBlobFillColor: "#000000",
-    darkBlobFillOpacity: 0.3,
-    blobBorderColor: "#466e91",
-    darkBlobBorderColor: "#77e4cb",
+      // Container/Appearance
+      containerMargin: 20,
+      isRoundedContainer: false,
+      showBorder: true,
+      backgroundColor: "#aac9ca",
+      darkBackgroundColor: "#1a2b2f",
+      blobFillColor: "#ffffff",
+      blobFillOpacity: 0.3,
+      darkBlobFillColor: "#000000",
+      darkBlobFillOpacity: 0.3,
+      blobBorderColor: "#466e91",
+      darkBlobBorderColor: "#77e4cb",
+      letterColor: "#000000",
+      darkLetterColor: "#FFFFFF",
 
-    // Interaction/Tools
-    toolMode: null,
+      // Interaction/Tools
+      toolMode: null,
 
-    // Restricted Area / Static Obstacle
-    restrictedAreaEnabled: true,
-    restrictedAreaShape: 'letter',
-    restrictedAreaSize: 100,
-    restrictedAreaLetter: 'A',
-    restrictedAreaMargin: 30,
+      // Restricted Area / Static Obstacle
+      restrictedAreaEnabled: true,
+      restrictedAreaShape: 'letter',
+      restrictedAreaSize: 400,
+      restrictedAreaLetter: 'A',
+      restrictedAreaMargin: 4, // Reduced margin to match new blob size
+      // New: allow position override (default: centered)
+      restrictedAreaX: undefined,
+      restrictedAreaY: undefined,
+    };
   });
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(simulationParams));
+    }
+  }, [simulationParams]);
 
   // --- Handle parameter updates ---
   const handleParamChange = (key: string, value: any) => {
@@ -91,6 +120,11 @@ export function BlobSimulation() {
           blob.repelDistance = value;
         });
       }
+
+      // Clear letter shape cache when color changes
+      if (key === 'letterColor' || key === 'darkLetterColor') {
+        letterShapeCache.clear();
+      }
     }
     
     setSimulationParams(prev => ({ ...prev, [key]: value }));
@@ -98,16 +132,14 @@ export function BlobSimulation() {
 
   // Calculate restricted area params based on state
   const calculateRestrictedAreaParams = (canvasWidth: number, canvasHeight: number): RestrictedAreaParams | undefined => {
-    const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin } = simulationParams;
-    
+    const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin, restrictedAreaX, restrictedAreaY } = simulationParams;
     if (!restrictedAreaEnabled) return undefined;
-    
-    const centerX = canvasWidth / 2;
-    const centerY = canvasHeight / 2;
-    
+    // Do NOT use baseline for restricted area box, only for letter drawing
+    const x = restrictedAreaX !== undefined ? restrictedAreaX : (canvasWidth / 2 - restrictedAreaSize / 2);
+    const y = restrictedAreaY !== undefined ? restrictedAreaY : (canvasHeight / 2 - restrictedAreaSize / 2);
     return {
-      x: centerX - restrictedAreaSize / 2,
-      y: centerY - restrictedAreaSize / 2,
+      x,
+      y,
       size: restrictedAreaSize,
       margin: restrictedAreaMargin,
       letter: restrictedAreaLetter
@@ -170,6 +202,8 @@ export function BlobSimulation() {
     simulationParams.darkBlobFillOpacity, 
     simulationParams.blobBorderColor, 
     simulationParams.darkBlobBorderColor,
+    simulationParams.letterColor,  // Added this
+    simulationParams.darkLetterColor,  // Added this
     simulationParams.restrictedAreaEnabled, 
     simulationParams.restrictedAreaShape, 
     simulationParams.restrictedAreaSize, 
@@ -177,6 +211,13 @@ export function BlobSimulation() {
     isInitialized,
     isMounted
   ]);
+
+  // Redraw when restricted area position changes and not animating
+  useEffect(() => {
+    if (!isAnimating && isInitialized && isMounted && (simulationParams.restrictedAreaX !== undefined || simulationParams.restrictedAreaY !== undefined)) {
+      draw();
+    }
+  }, [simulationParams.restrictedAreaX, simulationParams.restrictedAreaY, isAnimating, isInitialized, isMounted]);
 
   // --- Core Functions ---
   const initializeSimulation = () => {
@@ -202,8 +243,13 @@ export function BlobSimulation() {
         edgePointCount, 
         minBlobSize, 
         repelDistance, 
-        containerMargin 
+        containerMargin,
+        letterColor,
+        darkLetterColor 
       } = simulationParams;
+      
+      // Use the theme-appropriate letter color for collision detection
+      const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
       
       const canvasSize = 512;
       const dpi = getDevicePixelRatio();
@@ -220,28 +266,93 @@ export function BlobSimulation() {
       const minBlobDist = (minBlobSize * 2) + repelDistance;
       const pdsRestrictedArea = calculateRestrictedAreaParams(logicalWidth, logicalHeight);
 
-      let points: Array<[number, number]> = [];
-      try {
-        points = poissonDiskSampling(
-          logicalWidth, logicalHeight, minBlobDist, 30, shapeCount,
-          pdsRestrictedArea, minBlobSize
-        );
-      } catch (error) { 
-        console.error("PDS Error:", error); 
+      // Initialize blobs array
+      blobsRef.current = [];
+
+      // Calculate letter area and remaining area
+      let letterArea = 0;
+      let totalArea = logicalWidth * logicalHeight;
+      let letterCenterX = 0, letterCenterY = 0;
+
+      if (pdsRestrictedArea?.letter) {
+        // Create temporary canvas for area calculation
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvasSize;
+        tempCanvas.height = canvasSize;
+        const tempCtx = tempCanvas.getContext('2d');
+        if (!tempCtx) return;
+
+        // Draw letter temporarily to calculate its area using the current theme color and font
+        tempCtx.fillStyle = letterDisplayColor;
+        tempCtx.clearRect(0, 0, canvasSize, canvasSize);
+        letterCenterX = pdsRestrictedArea.x + pdsRestrictedArea.size / 2;
+        letterCenterY = pdsRestrictedArea.y + pdsRestrictedArea.size / 2;
+        drawLetter(tempCtx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, letterDisplayColor, simulationParams.fontFamily);
+        
+        // Count letter pixels from temp canvas
+        const imageData = tempCtx.getImageData(0, 0, canvasSize, canvasSize);
+        const pixels = imageData.data;
+        let letterPixels = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] > 0 || pixels[i + 1] > 0 || pixels[i + 2] > 0) { // Check all color channels
+            letterPixels++;
+          }
+        }
+        letterArea = (letterPixels / (canvasSize * canvasSize)) * totalArea;
+
+        // Clean up temporary canvas
+        tempCanvas.width = 1;
+        tempCanvas.height = 1;
       }
 
-      if (points.length < shapeCount) {
-        console.warn(`PDS Warning: Generated ${points.length}/${shapeCount} points.`);
+      const outsideArea = totalArea - letterArea;
+      const letterAreaRatio = letterArea / totalArea;
+      const insideShapeCount = Math.round(shapeCount * letterAreaRatio);
+      const outsideShapeCount = shapeCount - insideShapeCount;
+
+      // Create points for blobs outside the letter
+      for (let i = 0; i < outsideShapeCount; i++) {
+        let x, y;
+        let attempts = 0;
+        const maxAttempts = 50;
+
+        do {
+          x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+          y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+          attempts++;
+
+          // Check if point is outside letter and not too close to other blobs
+          const isValidPosition = pdsRestrictedArea?.letter ? 
+            !isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor) :
+            true;
+
+          if (isValidPosition && !isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
+            blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
+            break;
+          }
+        } while (attempts < maxAttempts);
       }
 
-      blobsRef.current = points.map(([x, y]) => new Blob(
-        x + containerMargin, y + containerMargin,
-        edgePointCount, minBlobSize, repelDistance
-      ));
+      // Create points for blobs inside the letter
+      if (pdsRestrictedArea?.letter && insideShapeCount > 0) {
+        for (let i = 0; i < insideShapeCount; i++) {
+          let x, y;
+          let attempts = 0;
+          const maxAttempts = 50;
 
-      // Fix any blobs that might be overlapping with the letter
-      if (simulationParams.restrictedAreaEnabled) {
-        fixBlobsOverlappingWithLetter(ctx);
+          do {
+            x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+            y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+            attempts++;
+
+            const isValidPosition = isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor);
+
+            if (isValidPosition && !isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
+              blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
+              break;
+            }
+          } while (attempts < maxAttempts);
+        }
       }
 
       console.log("Initialization complete.");
@@ -264,8 +375,10 @@ export function BlobSimulation() {
     const letterCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
     const letterCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
     const letterSize = restrictedAreaParams.size;
-    const { containerMargin } = simulationParams;
+    const { containerMargin, letterColor, darkLetterColor } = simulationParams;
 
+    const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
+    
     // First, check each blob to see if its center or any particles are inside the letter
     blobsRef.current.forEach((blob, blobIndex) => {
       // Quick check if blob center is inside letter
@@ -276,7 +389,8 @@ export function BlobSimulation() {
         letterCenterY,
         letterSize,
         blob.centre.x,
-        blob.centre.y
+        blob.centre.y,
+        letterDisplayColor
       );
       
       // Check if any particles are inside letter (only if center isn't in letter)
@@ -291,7 +405,8 @@ export function BlobSimulation() {
             letterCenterY,
             letterSize,
             particle.pos.x,
-            particle.pos.y
+            particle.pos.y,
+            letterDisplayColor
           )) {
             anyParticleInLetter = true;
             break;
@@ -308,7 +423,7 @@ export function BlobSimulation() {
         do {
           newX = containerMargin + Math.random() * (canvasWidth - 2 * containerMargin);
           newY = containerMargin + Math.random() * (canvasHeight - 2 * containerMargin);
-        } while (isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY));
+        } while (isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY, letterDisplayColor));  // Pass the color
         
         // Make sure the new position is within canvas bounds
         const safeX = Math.max(containerMargin + blob.maxRadius, 
@@ -346,6 +461,7 @@ export function BlobSimulation() {
         blobFillColor, blobFillOpacity,
         darkBlobFillColor, darkBlobFillOpacity,
         blobBorderColor, darkBlobBorderColor,
+        letterColor, darkLetterColor,
         showBorder, containerMargin, isRoundedContainer,
         restrictedAreaEnabled, restrictedAreaShape
       } = simulationParams;
@@ -358,8 +474,8 @@ export function BlobSimulation() {
           hexToRgba(darkBlobFillColor, darkBlobFillOpacity) :
           hexToRgba(blobFillColor, blobFillOpacity),
         border: currentTheme === "dark" ? darkBlobBorderColor : blobBorderColor,
-        obstacle: currentTheme === "dark" ? "#f87171" : "#dc2626",
-        obstacleText: currentTheme === "dark" ? "#111827" : "#ffffff",
+        obstacle: currentTheme === "dark" ? darkLetterColor : letterColor,
+        obstacleText: currentTheme === "dark" ? darkBackgroundColor : backgroundColor
       };
 
       const dpi = getDevicePixelRatio();
@@ -394,16 +510,38 @@ export function BlobSimulation() {
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams) {
         if (restrictedAreaParams.letter) {
-          // Draw with strong color and larger font for better visibility
-          ctx.lineWidth = 2;
+          // Use the theme-appropriate letter color
+          const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
+
+          // Get baseline offset for perfect visual centering
+          const font = `bold ${restrictedAreaParams.size}px ${simulationParams.fontFamily || "Arial"}`;
+          const { baseline } = getLetterVisualBounds(restrictedAreaParams.letter, restrictedAreaParams.size, font);
+
+          // Draw only the letter visually centered (no rectangle or background)
+          const rectCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
+          const rectCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
+          const rectSize = restrictedAreaParams.size;
           drawLetter(
             ctx, 
             restrictedAreaParams.letter,
-            restrictedAreaParams.x + restrictedAreaParams.size / 2,
-            restrictedAreaParams.y + restrictedAreaParams.size / 2,
-            restrictedAreaParams.size, 
-            colors.obstacle
+            rectCenterX,
+            rectCenterY,
+            rectSize, 
+            letterDisplayColor,
+            simulationParams.fontFamily
           );
+
+          // Draw debug crosshair at center (optional, remove if not needed)
+          ctx.save();
+          ctx.strokeStyle = '#f00';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(rectCenterX - 10, rectCenterY);
+          ctx.lineTo(rectCenterX + 10, rectCenterY);
+          ctx.moveTo(rectCenterX, rectCenterY - 10);
+          ctx.lineTo(rectCenterX, rectCenterY + 10);
+          ctx.stroke();
+          ctx.restore();
         }
       }
 
@@ -432,8 +570,27 @@ export function BlobSimulation() {
         return; 
       }
 
-      // Read the latest parameters on each animation frame
-      // This allows for real-time changes to take effect immediately
+      const now = performance.now();
+      const elapsed = now - lastFrameTimeRef.current;
+
+      // Skip frame if too soon
+      if (elapsed < frameIntervalRef.current) {
+        animationFrameIdRef.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      // Adjust frame interval based on performance
+      const fps = 1000 / elapsed;
+      if (fps < targetFPSRef.current - 5) {
+        // If FPS is too low, increase frame interval
+        frameIntervalRef.current = Math.min(frameIntervalRef.current * 1.1, 1000 / 30);
+      } else if (fps > targetFPSRef.current + 5) {
+        // If FPS is high enough, decrease frame interval
+        frameIntervalRef.current = Math.max(frameIntervalRef.current * 0.9, 1000 / 60);
+      }
+
+      lastFrameTimeRef.current = now;
+
       const { 
         springTension, containerMargin, isRoundedContainer,
         interactionStrength, maxExpansionFactor,
@@ -447,17 +604,11 @@ export function BlobSimulation() {
       const shapeType = restrictedAreaEnabled ? restrictedAreaShape : null;
       const shapeParams = restrictedAreaEnabled && restrictedAreaParams ? restrictedAreaParams : null;
 
-      // Apply animation speed control - skip frames if speed < 1
-      if (speed < 1 && Math.random() > speed) {
-        // Just request next frame without computing
-        animationFrameIdRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
       // --- Update Step ---
       // For speed > 1, perform multiple updates per frame
       const iterations = speed > 1 ? Math.min(Math.floor(speed), 3) : 1;
-      
+      const timeStep = elapsed / (1000 / 60); // Normalize timestep
+
       for (let i = 0; i < iterations; i++) {
         blobsRef.current.forEach((blob) => {
           if (blob?.update) {
@@ -465,7 +616,9 @@ export function BlobSimulation() {
             blob.repelDistance = repelDistance;
             
             blob.update(
-              blobsRef.current, springTension,
+              // Only pass nearby blobs for interaction
+              getNearbyBlobs(blob, blobsRef.current), 
+              springTension * timeStep,
               canvasWidth, canvasHeight, containerMargin, isRoundedContainer,
               interactionStrength, maxExpansionFactor,
               gravity, damping,
@@ -485,6 +638,19 @@ export function BlobSimulation() {
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       setIsAnimating(false);
     }
+  };
+
+  // Helper function to get only nearby blobs for interaction
+  const getNearbyBlobs = (blob: Blob, allBlobs: Blob[]): Blob[] => {
+    const interactionRange = blob.maxRadius * 3 + blob.repelDistance;
+    return allBlobs.filter(otherBlob => {
+      if (otherBlob === blob) return false;
+      const dx = otherBlob.centre.x - blob.centre.x;
+      const dy = otherBlob.centre.y - blob.centre.y;
+      const distSq = dx * dx + dy * dy;
+      const maxRange = interactionRange + otherBlob.maxRadius;
+      return distSq <= maxRange * maxRange;
+    });
   };
 
   // --- Event Handlers ---
@@ -540,6 +706,7 @@ export function BlobSimulation() {
         blobFillColor, blobFillOpacity,
         darkBlobFillColor, darkBlobFillOpacity,
         blobBorderColor, darkBlobBorderColor,
+        letterColor, darkLetterColor,
         showBorder, containerMargin, isRoundedContainer,
         restrictedAreaEnabled, restrictedAreaShape
       } = simulationParams;
@@ -553,7 +720,7 @@ export function BlobSimulation() {
           hexToRgba(darkBlobFillColor, darkBlobFillOpacity) :
           hexToRgba(blobFillColor, blobFillOpacity),
         border: currentTheme === "dark" ? darkBlobBorderColor : blobBorderColor,
-        obstacle: currentTheme === "dark" ? "#f87171" : "#dc2626",
+        obstacle: currentTheme === "dark" ? darkLetterColor : letterColor,
       };
 
       let svgContent = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${colors.bg};">`;
@@ -579,7 +746,12 @@ export function BlobSimulation() {
 
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams && restrictedAreaParams.letter) {
-        svgContent += `<text x="${restrictedAreaParams.x + restrictedAreaParams.size / 2}" y="${restrictedAreaParams.y + restrictedAreaParams.size / 2}" font-family="Arial" font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
+        // Use the same baseline logic as in calculateRestrictedAreaParams
+        const font = `bold ${restrictedAreaParams.size}px ${simulationParams.fontFamily || "Arial"}`;
+        // No baseline offset for SVG overlays
+        const svgCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
+        const svgCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
+        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family="Arial" font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
       }
 
       svgContent += `</svg>`;
@@ -602,33 +774,63 @@ export function BlobSimulation() {
   };
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isMounted) return;
-    
     try {
       const canvas = canvasRef.current;
-      const { toolMode, containerMargin, minBlobSize, repelDistance, edgePointCount } = simulationParams;
+      if (!canvas) return;
       
-      if (!canvas || !toolMode) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const { toolMode, containerMargin, minBlobSize, repelDistance, edgePointCount, letterColor, darkLetterColor } = simulationParams;
+      if (!toolMode) return;
 
       const rect = canvas.getBoundingClientRect();
       const dpi = getDevicePixelRatio();
       const scaleX = canvas.width / dpi / rect.width;
       const scaleY = canvas.height / dpi / rect.height;
-      const x = (event.clientX - rect.left) * scaleX;
-      const y = (event.clientY - rect.top) * scaleY;
-
-      console.log(`Canvas click detected (${toolMode}) at: ${x.toFixed(1)}, ${y.toFixed(1)}`);
+      const rawX = (event.clientX - rect.left) * scaleX;
+      const rawY = (event.clientY - rect.top) * scaleY;
 
       if (toolMode === 'add') {
-        if (x < containerMargin || x > 512 - containerMargin || y < containerMargin || y > 512 - containerMargin) {
+        // Check basic container bounds
+        if (rawX < containerMargin || rawX > 512 - containerMargin || 
+            rawY < containerMargin || rawY > 512 - containerMargin) {
           console.warn("Cannot add shape: click is outside the container margin.");
           return;
         }
 
+        // Get optimal placement near the clicked position
+        let x = rawX, y = rawY;
+        const restrictedParams = calculateRestrictedAreaParams(512, 512);
+        
+        if (simulationParams.restrictedAreaEnabled && restrictedParams && restrictedParams.letter) {
+          const letterCenterX = restrictedParams.x + restrictedParams.size / 2;
+          const letterCenterY = restrictedParams.y + restrictedParams.size / 2;
+          
+          // Use optimal placement algorithm
+          const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
+          const optimalPos = findOptimalBlobPlacement(
+            ctx,
+            blobsRef.current,
+            restrictedParams.letter,
+            letterCenterX,
+            letterCenterY,
+            restrictedParams.size,
+            512,
+            512,
+            containerMargin,
+            letterDisplayColor
+          );
+          
+          x = optimalPos.x;
+          y = optimalPos.y;
+        }
+
+        // Check if new blob would overlap with existing blobs
         const isOverlapping = blobsRef.current.some(blob => {
           if (!blob || !blob.centre || typeof blob.maxRadius === 'undefined') return false;
-          const distSq = blob.centre.distanceToSquared(new Vector2(x, y));
-          const minAllowedDistSq = Math.pow(blob.maxRadius + minBlobSize, 2);
+          const distSq = new Vector2(x, y).distanceToSquared(blob.centre);
+          const minAllowedDistSq = Math.pow(blob.maxRadius + minBlobSize + repelDistance, 2);
           return distSq < minAllowedDistSq;
         });
 
@@ -637,75 +839,24 @@ export function BlobSimulation() {
           return;
         }
 
-        const restrictedParams = calculateRestrictedAreaParams(512, 512);
-        if (simulationParams.restrictedAreaEnabled && restrictedParams) {
-          // Check for the letter boundary
-          if (restrictedParams.letter) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              const letterCenterX = restrictedParams.x + restrictedParams.size / 2;
-              const letterCenterY = restrictedParams.y + restrictedParams.size / 2;
-              
-              // Check if the point is inside the letter's actual shape
-              const isInLetterShape = isPointInLetter(
-                ctx,
-                restrictedParams.letter,
-                letterCenterX,
-                letterCenterY,
-                restrictedParams.size,
-                x,
-                y
-              );
-              
-              if (isInLetterShape) {
-                console.warn("Cannot add shape: inside letter shape.");
-                return;
-              }
-              
-              // Still check the margin around the letter
-              const raMinX = restrictedParams.x - restrictedParams.margin;
-              const raMaxX = restrictedParams.x + restrictedParams.size + restrictedParams.margin;
-              const raMinY = restrictedParams.y - restrictedParams.margin;
-              const raMaxY = restrictedParams.y + restrictedParams.size + restrictedParams.margin;
-              
-              if (x >= raMinX && x <= raMaxX && y >= raMinY && y <= raMaxY) {
-                // The point is within the margin boundary, but we already checked if it's in the letter shape
-                // So this is the margin area around the letter, not the letter itself
-                // You can decide if you want to allow blob placement in this area or not
-              }
-            }
-          } else {
-            // Fallback to rectangular check if letter property is not available
-            const raMinX = restrictedParams.x - restrictedParams.margin;
-            const raMaxX = restrictedParams.x + restrictedParams.size + restrictedParams.margin;
-            const raMinY = restrictedParams.y - restrictedParams.margin;
-            const raMaxY = restrictedParams.y + restrictedParams.size + restrictedParams.margin;
-            if (x >= raMinX && x <= raMaxX && y >= raMinY && y <= raMaxY) {
-              console.warn("Cannot add shape: inside restricted area.");
-              return;
-            }
-          }
-        }
-
         const newBlob = new Blob(x, y, edgePointCount, minBlobSize, repelDistance);
         blobsRef.current.push(newBlob);
         console.log(`Added new blob at ${x.toFixed(1)}, ${y.toFixed(1)}`);
-
       } else if (toolMode === 'remove') {
+        // Remove blobs near click
         let removedCount = 0;
         blobsRef.current = blobsRef.current.filter((blob) => {
           if (!blob || !blob.centre || typeof blob.maxRadius === 'undefined') return true;
-          const distSq = blob.centre.distanceToSquared(new Vector2(x, y));
+          const distSq = blob.centre.distanceToSquared(new Vector2(rawX, rawY));
           if (distSq <= blob.maxRadius * blob.maxRadius) {
             removedCount++;
             return false;
           }
           return true;
         });
-        console.log(`Removed ${removedCount} blob(s) near ${x.toFixed(1)}, ${y.toFixed(1)}`);
+        console.log(`Removed ${removedCount} blob(s) near ${rawX.toFixed(1)}, ${rawY.toFixed(1)}`);
       }
 
-      setSimulationParams(prev => ({ ...prev, toolMode: null }));
       draw();
     } catch (error) {
       console.error("Error handling canvas click:", error);
@@ -782,6 +933,21 @@ export function BlobSimulation() {
               aria-label="Remove Shape Tool"
             >
               <Eraser className="w-5 h-5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                setSimulationParams(prev => ({
+                  ...prev,
+                  restrictedAreaX: undefined,
+                  restrictedAreaY: undefined
+                }));
+              }}
+              className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full"
+              aria-label="Center Letter"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="10" cy="12" r="4"/><line x1="10" y1="2" x2="10" y2="8"/><line x1="10" y1="16" x2="10" y2="18"/></svg>
             </Button>
           </div>
 

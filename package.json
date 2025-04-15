@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "ssl-proxy": "local-ssl-proxy --source 3443 --target 3000 --cert localhost+2.pem --key localhost+2-key.pem"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -65,6 +66,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.175.0",
+    "local-ssl-proxy": "^2.0.5",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"

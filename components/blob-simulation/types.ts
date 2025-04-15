@@ -28,9 +28,11 @@ export interface SimulationParams {
   darkBlobFillOpacity: number;
   blobBorderColor: string;
   darkBlobBorderColor: string;
+  letterColor: string;
+  darkLetterColor: string;
 
   // Interaction/Tools
-  toolMode: 'add' | 'remove' | null;
+  toolMode: 'add' | 'remove' | 'drag-letter' | null;
 
   // Restricted Area / Static Obstacle
   restrictedAreaEnabled: boolean;
@@ -38,6 +40,11 @@ export interface SimulationParams {
   restrictedAreaSize: number;
   restrictedAreaLetter: string;
   restrictedAreaMargin: number;
+  // Add these for drag support
+  restrictedAreaX?: number;
+  restrictedAreaY?: number;
+  // Font for the letter
+  fontFamily?: string;
 }
 
 /**

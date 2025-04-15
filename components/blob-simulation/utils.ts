@@ -1,3 +1,6 @@
+import { Vector2 } from 'three';
+import { Blob as SimBlob } from './blob';  // Rename import to avoid conflict with browser's Blob
+
 // Simulation utilities
 
 /**
@@ -9,31 +12,25 @@ export function drawLetter(
   x: number, 
   y: number, 
   size: number, 
-  color: string = "white"
+  color: string = "white",
+  fontFamily?: string
 ) {
   // Save the current context state
   ctx.save();
-  
-  // Draw with strong emphasis to ensure visibility
-  ctx.font = `bold ${size}px Arial`;
+  // Get visual bounds for true centering
+  const font = `bold ${size}px ${fontFamily || "Arial"}`;
+  const { baseline } = getLetterVisualBounds(letter, size, font);
+  ctx.font = font;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  
-  // Fill the letter
   ctx.fillStyle = color;
-  ctx.fillText(letter, x, y);
-  
-  // Optional: Add an outline for better visibility
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-  ctx.strokeText(letter, x, y);
-  
-  // Restore the context
+  // Apply baseline offset to y for true visual centering
+  ctx.fillText(letter, x, y + baseline);
   ctx.restore();
 }
 
 // Cache for letter shapes to avoid recreating canvases
-const letterShapeCache: Map<string, {
+export const letterShapeCache: Map<string, {
   canvas: HTMLCanvasElement,
   ctx: CanvasRenderingContext2D,
   imageData: ImageData
@@ -49,10 +46,12 @@ export function isPointInLetter(
   letterY: number,
   letterSize: number,
   pointX: number,
-  pointY: number
+  pointY: number,
+  color: string = "black", // Add color parameter
+  fontFamily?: string
 ): boolean {
-  // Create a unique cache key based on the letter and its size
-  const cacheKey = `${letter}-${letterSize}`;
+  // Create a unique cache key based on the letter, size and color
+  const cacheKey = `${letter}-${letterSize}-${color}-${fontFamily || "Arial"}`;
   
   // Check if we already have this letter cached
   let letterData = letterShapeCache.get(cacheKey);
@@ -68,16 +67,18 @@ export function isPointInLetter(
     const offCtx = offscreen.getContext('2d', { willReadFrequently: true });
     if (!offCtx) return false;
     
-    // Clear canvas with white background
+    // Clear canvas with white background for collision detection
     offCtx.fillStyle = 'white';
     offCtx.fillRect(0, 0, w, h);
     
-    // Draw the letter in black
-    offCtx.fillStyle = 'black';
-    offCtx.font = `bold ${letterSize}px Arial`;
+    // Draw the letter in specified color, baseline centered
+    const font = `bold ${letterSize}px ${fontFamily || "Arial"}`;
+    const { baseline } = getLetterVisualBounds(letter, letterSize, font);
+    offCtx.fillStyle = color;
+    offCtx.font = font;
     offCtx.textAlign = "center";
     offCtx.textBaseline = "middle";
-    offCtx.fillText(letter, w/2, h/2);
+    offCtx.fillText(letter, w/2, h/2 + baseline);
     
     // Cache the letter data
     const imageData = offCtx.getImageData(0, 0, w, h);
@@ -104,7 +105,7 @@ export function isPointInLetter(
   const g = letterData.imageData.data[pixelIndex + 1];
   const b = letterData.imageData.data[pixelIndex + 2];
   
-  // If pixel is dark, it's part of the letter
+  // If pixel is dark, it's part of the letter (collision detection)
   return r < 200 && g < 200 && b < 200;
 }
 
@@ -118,251 +119,123 @@ export function poissonDiskSampling(
   minDistance: number,
   maxAttempts: number = 30,
   maxPoints: number = 100,
-  restrictedArea: { x: number; y: number; size: number; margin: number; letter?: string } | undefined = undefined,
+  restrictedArea: { x: number; y: number; size: number; margin: number; letter?: string; color?: string } | undefined = undefined,
   entityRadius: number = 0
 ): Array<[number, number]> {
-  // Implementation of Poisson disk sampling algorithm
-  // Returns array of [x, y] coordinates for blob initialization
-
-  // Check for extreme values that would cause infinite loops
-  if (minDistance <= 0 || width <= 0 || height <= 0) {
-    console.warn("Invalid parameters for Poisson disk sampling");
-    return [];
-  }
-
+  // Create active point list
   const points: Array<[number, number]> = [];
+  const activePoints: Array<[number, number]> = [];
+  const grid: Array<Array<number>> = [];
   const cellSize = minDistance / Math.sqrt(2);
   const gridWidth = Math.ceil(width / cellSize);
   const gridHeight = Math.ceil(height / cellSize);
-  const grid = new Array(gridWidth * gridHeight).fill(null);
-  const active: Array<[number, number]> = [];
 
-  // Create a temporary canvas for letter shape testing only once
-  let letterCanvas: HTMLCanvasElement | null = null;
-  let letterCtx: CanvasRenderingContext2D | null = null;
-  let letterCenterX: number = 0;
-  let letterCenterY: number = 0;
-  
-  // Pre-compute a bounding box for quick exclusion tests
-  let restrictedBounds = {
-    minX: 0, minY: 0, maxX: width, maxY: height,
-    hasLetter: false
-  };
-  
-  if (restrictedArea?.letter) {
-    letterCanvas = document.createElement('canvas');
-    letterCanvas.width = width;
-    letterCanvas.height = height;
-    letterCtx = letterCanvas.getContext('2d');
-    
-    if (letterCtx) {
-      letterCenterX = restrictedArea.x + restrictedArea.size / 2;
-      letterCenterY = restrictedArea.y + restrictedArea.size / 2;
-      
-      // Draw the letter once to create the path for testing
-      drawLetter(
-        letterCtx, 
-        restrictedArea.letter, 
-        letterCenterX, 
-        letterCenterY, 
-        restrictedArea.size
-      );
-      
-      // Pre-compute the bounding box with margin for quicker exclusion tests
-      const margin = restrictedArea.margin || 0;
-      restrictedBounds = {
-        minX: restrictedArea.x - margin - entityRadius,
-        minY: restrictedArea.y - margin - entityRadius,
-        maxX: restrictedArea.x + restrictedArea.size + margin + entityRadius,
-        maxY: restrictedArea.y + restrictedArea.size + margin + entityRadius,
-        hasLetter: true
-      };
-    }
+  // Initialize grid
+  for (let i = 0; i < gridWidth * gridHeight; i++) {
+    grid[i] = [];
   }
 
-  // Helper function to check if point is in restricted area - optimized version
-  const isInRestrictedArea = (x: number, y: number): boolean => {
-    if (!restrictedArea) return false;
-    
-    // First do a quick rectangle bounds check (optimization)
-    if (x < restrictedBounds.minX || x > restrictedBounds.maxX || 
-        y < restrictedBounds.minY || y > restrictedBounds.maxY) {
-      return false; // Outside bounding rectangle
-    }
-    
-    // For letter shape, check if the point is inside the letter path
-    if (restrictedBounds.hasLetter && letterCtx && restrictedArea.letter) {
-      // When many points are being tested during initialization, we use a faster
-      // but less accurate check for points far from the letter
+  // Helper functions
+  function gridCoords(p: Vector2): { x: number; y: number } {
+    return {
+      x: Math.floor(p.x / cellSize),
+      y: Math.floor(p.y / cellSize)
+    };
+  }
+
+  const isValidPoint = (x: number, y: number): boolean => {
+    // Basic bounds check
+    if (x < 0 || x >= width || y < 0 || y >= height) return false;
+
+    // If there's a restricted area with a letter
+    if (restrictedArea?.letter) {
+      const letterCtx = createLetterPath(document.createElement('canvas').getContext('2d')!, restrictedArea.letter, restrictedArea.size).ctx;
+      const letterCenterX = restrictedArea.x + restrictedArea.size / 2;
+      const letterCenterY = restrictedArea.y + restrictedArea.size / 2;
       
-      // Distance from point to center of letter
-      const dx = x - letterCenterX;
-      const dy = y - letterCenterY;
-      const distSq = dx*dx + dy*dy;
-      
-      // If very close to letter center, definitely check
-      // If very far, we can skip the expensive isPointInLetter check
-      const letterRadius = restrictedArea.size / 2;
-      const outerRadiusSq = (letterRadius + restrictedArea.margin) * (letterRadius + restrictedArea.margin);
-      const innerRadiusSq = (letterRadius * 0.3) * (letterRadius * 0.3);
-      
-      // If point is far outside the letter's maximum possible radius, skip
-      if (distSq > outerRadiusSq) {
-        return false;
-      }
-      
-      // If point is very close to center, it's likely inside
-      if (distSq < innerRadiusSq) {
-        return true;
-      }
-      
-      // For points in the border region, do the full check
-      return isPointInLetter(
+      // Check if point is outside both letter bounds and margin
+      const isInLetter = isPointInLetter(
         letterCtx,
         restrictedArea.letter,
         letterCenterX,
         letterCenterY,
         restrictedArea.size,
         x,
-        y
+        y,
+        restrictedArea.color || 'black'  // Use provided color or default to black
       );
+
+      // We want points OUTSIDE the letter for initial placement
+      return !isInLetter;
     }
-    
-    // Default rectangle check
-    return true; // Already passed the bounding box check above
+    return true;
   };
 
-  // Add initial point
-  let initialAttempts = 0;
-  const maxInitialAttempts = 100;
+  // Place initial point at top left corner to start filling
+  const initialX = minDistance;
+  const initialY = minDistance;
 
-  // Try to place initial point efficiently
-  while (initialAttempts < maxInitialAttempts) {
-    // First try corners and edges which are usually free
-    let x: number, y: number;
-    
-    if (initialAttempts < 4) {
-      // Try corners first
-      const corner = initialAttempts % 4;
-      x = corner < 2 ? entityRadius : width - entityRadius;
-      y = corner % 2 === 0 ? entityRadius : height - entityRadius;
-    } else if (initialAttempts < 12) {
-      // Try edge centers
-      const edge = (initialAttempts - 4) % 4;
-      if (edge === 0) {
-        x = width / 2;
-        y = entityRadius;
-      } else if (edge === 1) {
-        x = width - entityRadius;
-        y = height / 2;
-      } else if (edge === 2) {
-        x = width / 2;
-        y = height - entityRadius;
-      } else {
-        x = entityRadius;
-        y = height / 2;
-      }
-    } else {
-      // Random position
-      x = Math.random() * width;
-      y = Math.random() * height;
-    }
-
-    if (!isInRestrictedArea(x, y)) {
-      addPoint(x, y);
-      break;
-    }
-    initialAttempts++;
+  if (isValidPoint(initialX, initialY)) {
+    points.push([initialX, initialY]);
+    activePoints.push([initialX, initialY]);
+    const gridPos = gridCoords(new Vector2(initialX, initialY));
+    grid[gridPos.y * gridWidth + gridPos.x].push(points.length - 1);
   }
 
-  // If couldn't place initial point outside restricted area after many attempts
-  if (initialAttempts >= maxInitialAttempts && points.length === 0) {
-    // Just add a point at the corner as fallback
-    addPoint(entityRadius, entityRadius);
-  }
-
-  // Main sampling loop - optimized for performance
-  while (active.length > 0 && points.length < maxPoints) {
-    const randomIndex = Math.floor(Math.random() * active.length);
-    const currentPoint = active[randomIndex];
+  // Generate points
+  while (activePoints.length > 0 && points.length < maxPoints) {
+    const randomIndex = Math.floor(Math.random() * activePoints.length);
+    const currentPoint = new Vector2(activePoints[randomIndex][0], activePoints[randomIndex][1]);
     let found = false;
 
-    for (let i = 0; i < maxAttempts; i++) {
+    // Try to find a valid new point
+    attempts: for (let i = 0; i < maxAttempts; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const distance = minDistance + Math.random() * minDistance;
-      const newX = currentPoint[0] + Math.cos(angle) * distance;
-      const newY = currentPoint[1] + Math.sin(angle) * distance;
+      const radius = minDistance * (1 + Math.random());
+      const candidate = new Vector2(
+        currentPoint.x + Math.cos(angle) * radius,
+        currentPoint.y + Math.sin(angle) * radius
+      );
 
-      // Check if point is in bounds first (fastest check)
-      if (newX < entityRadius || newX >= width - entityRadius || 
-          newY < entityRadius || newY >= height - entityRadius) {
-        continue; // Skip out-of-bounds points immediately
-      }
+      // Skip if candidate is out of bounds or in invalid area
+      if (!isValidPoint(candidate.x, candidate.y)) continue;
+
+      // Check if candidate is too close to existing points
+      const gridPos = gridCoords(candidate);
+      const cellsToCheck = [-1, 0, 1];
       
-      // Check restricted area next (medium cost)
-      if (isInRestrictedArea(newX, newY)) {
-        continue; // Skip restricted points
-      }
-      
-      // Check neighbors last (most expensive in dense areas)
-      if (!hasNeighbors(newX, newY)) {
-        addPoint(newX, newY);
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      // If no valid point found after max attempts, remove current point from active list
-      active.splice(randomIndex, 1);
-    }
-  }
-
-  // Cleanup temporary resources
-  if (letterCanvas) {
-    // Help garbage collection
-    letterCanvas.width = 1;
-    letterCanvas.height = 1;
-  }
-
-  return points;
-
-  // Helper functions
-  function addPoint(x: number, y: number) {
-    const point: [number, number] = [x, y];
-    points.push(point);
-    active.push(point);
-
-    const gridX = Math.floor(x / cellSize);
-    const gridY = Math.floor(y / cellSize);
-    grid[gridY * gridWidth + gridX] = points.length - 1;
-  }
-
-  function hasNeighbors(x: number, y: number): boolean {
-    const gridX = Math.floor(x / cellSize);
-    const gridY = Math.floor(y / cellSize);
-
-    const startX = Math.max(0, gridX - 2);
-    const endX = Math.min(gridWidth - 1, gridX + 2);
-    const startY = Math.max(0, gridY - 2);
-    const endY = Math.min(gridHeight - 1, gridY + 2);
-
-    for (let y1 = startY; y1 <= endY; y1++) {
-      for (let x1 = startX; x1 <= endX; x1++) {
-        const pointIndex = grid[y1 * gridWidth + x1];
-        if (pointIndex !== null) {
-          const point = points[pointIndex];
-          const dx = point[0] - x;
-          const dy = point[1] - y;
-          const distSq = dx * dx + dy * dy;
-          if (distSq < minDistance * minDistance) {
-            return true;
+      for (const dx of cellsToCheck) {
+        for (const dy of cellsToCheck) {
+          const checkX = gridPos.x + dx;
+          const checkY = gridPos.y + dy;
+          
+          if (checkX >= 0 && checkX < gridWidth && checkY >= 0 && checkY < gridHeight) {
+            for (const pointIndex of grid[checkY * gridWidth + checkX]) {
+              const point = points[pointIndex];
+              const distSq = Math.pow(candidate.x - point[0], 2) + Math.pow(candidate.y - point[1], 2);
+              if (distSq < minDistance * minDistance) {
+                continue attempts;
+              }
+            }
           }
         }
       }
+
+      // If we get here, the candidate is valid
+      points.push([candidate.x, candidate.y]);
+      activePoints.push([candidate.x, candidate.y]);
+      grid[gridPos.y * gridWidth + gridPos.x].push(points.length - 1);
+      found = true;
+      break;
     }
-    return false;
+
+    // If no valid point was found after maxAttempts, remove the current point from active list
+    if (!found) {
+      activePoints.splice(randomIndex, 1);
+    }
   }
+
+  return points;
 }
 
 /**
@@ -387,3 +260,252 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
   
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
+
+export function createLetterPath(ctx: CanvasRenderingContext2D, letter: string, size: number, fontFamily?: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const tempCtx = canvas.getContext('2d')!;
+  
+  const font = `bold ${size}px ${fontFamily || "Arial"}`;
+  const { baseline } = getLetterVisualBounds(letter, size, font);
+  tempCtx.font = font;
+  tempCtx.textAlign = "center";
+  tempCtx.textBaseline = "middle";
+  tempCtx.fillText(letter, size/2, size/2 + baseline);
+  
+  return {
+    canvas,
+    ctx: tempCtx,
+    imageData: tempCtx.getImageData(0, 0, size, size)
+  };
+}
+
+export interface Region {
+  type: 'outer' | 'hole';
+  center: { x: number; y: number };
+  points: { x: number; y: number }[];
+}
+
+export function analyzeLetter(
+  ctx: CanvasRenderingContext2D,
+  letter: string,
+  letterX: number,
+  letterY: number,
+  letterSize: number
+): Region[] {
+  const letterData = createLetterPath(ctx, letter, letterSize);
+  const regions: Region[] = [];
+  const visited = new Set<string>();
+  const imgData = letterData.imageData;
+  const width = letterData.canvas.width;
+  const height = letterData.canvas.height;
+
+  // Helper to check if a point is inside the letter
+  const isBlack = (x: number, y: number) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return false;
+    const i = (y * width + x) * 4;
+    return imgData.data[i] < 200;
+  };
+
+  // Flood fill to find connected regions
+  const floodFill = (startX: number, startY: number, isHole: boolean): Region => {
+    const points: { x: number; y: number }[] = [];
+    const queue: [number, number][] = [[startX, startY]];
+    let sumX = 0, sumY = 0;
+
+    while (queue.length > 0) {
+      const [x, y] = queue.pop()!;
+      const key = `${x},${y}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      const isCurrentBlack = isBlack(x, y);
+      if (isHole ? isCurrentBlack : !isCurrentBlack) continue;
+
+      points.push({ x, y });
+      sumX += x;
+      sumY += y;
+
+      // Check neighbors
+      [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dx, dy]) => {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          queue.push([nx, ny]);
+        }
+      });
+    }
+
+    return {
+      type: isHole ? 'hole' : 'outer',
+      center: {
+        x: (sumX / points.length - width/2) + letterX,
+        y: (sumY / points.length - height/2) + letterY
+      },
+      points: points.map(p => ({
+        x: (p.x - width/2) + letterX,
+        y: (p.y - height/2) + letterY
+      }))
+    };
+  };
+
+  // Find outer region first
+  regions.push(floodFill(0, 0, false));
+
+  // Find holes by scanning for black pixels next to white ones
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      if (isBlack(x, y) && !isBlack(x+1, y)) {
+        // Found potential hole entrance
+        const nextX = x + 2;
+        const key = `${nextX},${y}`;
+        if (!visited.has(key) && !isBlack(nextX, y)) {
+          regions.push(floodFill(nextX, y, true));
+        }
+      }
+    }
+  }
+
+  // Cleanup
+  letterData.canvas.width = 1;
+  letterData.canvas.height = 1;
+
+  return regions;
+}
+
+export function calculateRegionDensity(
+  ctx: CanvasRenderingContext2D,
+  blobs: SimBlob[],
+  letter: string,
+  letterX: number,
+  letterY: number,
+  letterSize: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  letterColor: string = "black"
+): { insideDensity: number; outsideDensity: number } {
+  let insideParticles = 0;
+  let outsideParticles = 0;
+  let insideArea = 0;
+  let outsideArea = canvasWidth * canvasHeight;
+
+  // Calculate letter area
+  const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+  const pixels = imageData.data;
+  let letterPixels = 0;
+
+  // Draw letter temporarily to calculate its area using the current color
+  ctx.save();
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+  drawLetter(ctx, letter, letterX, letterY, letterSize, letterColor);
+  
+  // Count letter pixels
+  const tempImageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+  for (let i = 0; i < tempImageData.data.length; i += 4) {
+    // Check if any color channel has content
+    if (tempImageData.data[i] > 0 || tempImageData.data[i + 1] > 0 || tempImageData.data[i + 2] > 0) {
+      letterPixels++;
+    }
+  }
+  
+  ctx.restore();
+
+  insideArea = (letterPixels / (canvasWidth * canvasHeight)) * (canvasWidth * canvasHeight);
+  outsideArea = (canvasWidth * canvasHeight) - insideArea;
+
+  // Count particles in each region
+  blobs.forEach(blob => {
+    blob.particles.forEach(particle => {
+      if (isPointInLetter(ctx, letter, letterX, letterY, letterSize, particle.pos.x, particle.pos.y, letterColor)) {
+        insideParticles++;
+      } else {
+        outsideParticles++;
+      }
+    });
+  });
+
+  return {
+    insideDensity: insideParticles / insideArea,
+    outsideDensity: outsideParticles / outsideArea
+  };
+}
+
+export function findOptimalBlobPlacement(
+  ctx: CanvasRenderingContext2D,
+  blobs: SimBlob[],
+  letter: string,
+  letterX: number,
+  letterY: number,
+  letterSize: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  margin: number,
+  letterColor: string = "black"
+): { x: number; y: number } {
+  const { insideDensity, outsideDensity } = calculateRegionDensity(
+    ctx, blobs, letter, letterX, letterY, letterSize, canvasWidth, canvasHeight, letterColor
+  );
+
+  let attempts = 0;
+  const maxAttempts = 50;
+  
+  while (attempts < maxAttempts) {
+    const x = margin + Math.random() * (canvasWidth - 2 * margin);
+    const y = margin + Math.random() * (canvasHeight - 2 * margin);
+    
+    const isInside = isPointInLetter(ctx, letter, letterX, letterY, letterSize, x, y, letterColor);
+    
+    // Place in the region with lower density
+    if ((isInside && insideDensity <= outsideDensity) || 
+        (!isInside && outsideDensity <= insideDensity)) {
+      return { x, y };
+    }
+    
+    attempts++;
+  }
+  
+  // Fallback to random position if no optimal spot found
+  return {
+    x: margin + Math.random() * (canvasWidth - 2 * margin),
+    y: margin + Math.random() * (canvasHeight - 2 * margin)
+  };
+}
+
+export function isOverlappingOtherBlobs(x: number, y: number, blobs: SimBlob[], minBlobSize: number, repelDistance: number): boolean {
+  return blobs.some(blob => {
+    if (!blob || !blob.centre) return false;
+    const distSq = Math.pow(blob.centre.x - x, 2) + Math.pow(blob.centre.y - y, 2);
+    const minAllowedDistSq = Math.pow(blob.maxRadius + minBlobSize + repelDistance, 2);
+    return distSq < minAllowedDistSq;
+  });
+}
+
+// Utility: Get visual bounds of a letter in a canvas
+export function getLetterVisualBounds(letter: string, size: number, font: string = 'bold Arial'): {top: number, bottom: number, height: number, baseline: number} {
+  const canvas = document.createElement('canvas');
+  canvas.width = size * 2;
+  canvas.height = size * 2;
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = font.includes('px') ? font : `${font} ${size}px`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'black';
+  ctx.fillText(letter, canvas.width/2, canvas.height/2);
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let top = canvas.height, bottom = 0;
+  for (let y = 0; y < canvas.height; y++) {
+    for (let x = 0; x < canvas.width; x++) {
+      const i = (y * canvas.width + x) * 4;
+      if (imageData.data[i+3] > 0) { // non-transparent pixel
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+      }
+    }
+  }
+  const height = bottom - top + 1;
+  // Baseline offset: distance from canvas center to visual center
+  const baseline = (canvas.height/2) - (top + height/2);
+  return {top, bottom, height, baseline};
+}
+
