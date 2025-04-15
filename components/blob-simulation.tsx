@@ -132,7 +132,7 @@ export function BlobSimulation() {
 
   // Calculate restricted area params based on state
   const calculateRestrictedAreaParams = (canvasWidth: number, canvasHeight: number): RestrictedAreaParams | undefined => {
-    const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin, restrictedAreaX, restrictedAreaY } = simulationParams;
+    const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin, restrictedAreaX, restrictedAreaY, fontFamily } = simulationParams;
     if (!restrictedAreaEnabled) return undefined;
     // Do NOT use baseline for restricted area box, only for letter drawing
     const x = restrictedAreaX !== undefined ? restrictedAreaX : (canvasWidth / 2 - restrictedAreaSize / 2);
@@ -142,7 +142,8 @@ export function BlobSimulation() {
       y,
       size: restrictedAreaSize,
       margin: restrictedAreaMargin,
-      letter: restrictedAreaLetter
+      letter: restrictedAreaLetter,
+      fontFamily // <-- Add fontFamily to params
     };
   };
 
@@ -323,7 +324,7 @@ export function BlobSimulation() {
 
           // Check if point is outside letter and not too close to other blobs
           const isValidPosition = pdsRestrictedArea?.letter ? 
-            !isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor) :
+            !isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily) :
             true;
 
           if (isValidPosition && !isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
@@ -345,7 +346,7 @@ export function BlobSimulation() {
             y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
             attempts++;
 
-            const isValidPosition = isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor);
+            const isValidPosition = isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily);
 
             if (isValidPosition && !isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
               blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
@@ -390,7 +391,8 @@ export function BlobSimulation() {
         letterSize,
         blob.centre.x,
         blob.centre.y,
-        letterDisplayColor
+        letterDisplayColor,
+        restrictedAreaParams.fontFamily // <-- Pass fontFamily
       );
       
       // Check if any particles are inside letter (only if center isn't in letter)
@@ -406,7 +408,8 @@ export function BlobSimulation() {
             letterSize,
             particle.pos.x,
             particle.pos.y,
-            letterDisplayColor
+            letterDisplayColor,
+            restrictedAreaParams.fontFamily // <-- Pass fontFamily
           )) {
             anyParticleInLetter = true;
             break;
@@ -423,7 +426,7 @@ export function BlobSimulation() {
         do {
           newX = containerMargin + Math.random() * (canvasWidth - 2 * containerMargin);
           newY = containerMargin + Math.random() * (canvasHeight - 2 * containerMargin);
-        } while (isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY, letterDisplayColor));  // Pass the color
+        } while (isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY, letterDisplayColor, restrictedAreaParams.fontFamily));  // Pass the color
         
         // Make sure the new position is within canvas bounds
         const safeX = Math.max(containerMargin + blob.maxRadius, 
@@ -528,7 +531,7 @@ export function BlobSimulation() {
             rectCenterY,
             rectSize, 
             letterDisplayColor,
-            simulationParams.fontFamily
+            restrictedAreaParams.fontFamily // <-- Pass fontFamily
           );
 
           // Draw debug crosshair at center (optional, remove if not needed)
@@ -744,14 +747,15 @@ export function BlobSimulation() {
         }
       });
 
-      const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams && restrictedAreaParams.letter) {
         // Use the same baseline logic as in calculateRestrictedAreaParams
-        const font = `bold ${restrictedAreaParams.size}px ${simulationParams.fontFamily || "Arial"}`;
+        const fontFamily = simulationParams.fontFamily || "Arial";
+        const svgFontFamily = fontFamily.includes(" ") ? `"${fontFamily}"` : fontFamily;
+        const font = `bold ${restrictedAreaParams.size}px ${svgFontFamily}`;
         // No baseline offset for SVG overlays
         const svgCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
         const svgCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
-        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family="Arial" font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
+        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
       }
 
       svgContent += `</svg>`;
@@ -819,7 +823,8 @@ export function BlobSimulation() {
             512,
             512,
             containerMargin,
-            letterDisplayColor
+            letterDisplayColor,
+            restrictedParams.fontFamily // <-- Pass fontFamily
           );
           
           x = optimalPos.x;

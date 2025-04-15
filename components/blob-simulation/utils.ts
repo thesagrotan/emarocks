@@ -3,6 +3,11 @@ import { Blob as SimBlob } from './blob';  // Rename import to avoid conflict wi
 
 // Simulation utilities
 
+function formatFontFamily(fontFamily?: string) {
+  if (!fontFamily) return "Arial";
+  return fontFamily.includes(" ") ? `"${fontFamily}"` : fontFamily;
+}
+
 /**
  * Draw letter on canvas context
  */
@@ -18,7 +23,7 @@ export function drawLetter(
   // Save the current context state
   ctx.save();
   // Get visual bounds for true centering
-  const font = `bold ${size}px ${fontFamily || "Arial"}`;
+  const font = `bold ${size}px ${formatFontFamily(fontFamily)}`;
   const { baseline } = getLetterVisualBounds(letter, size, font);
   ctx.font = font;
   ctx.textAlign = "center";
@@ -72,7 +77,7 @@ export function isPointInLetter(
     offCtx.fillRect(0, 0, w, h);
     
     // Draw the letter in specified color, baseline centered
-    const font = `bold ${letterSize}px ${fontFamily || "Arial"}`;
+    const font = `bold ${letterSize}px ${formatFontFamily(fontFamily)}`;
     const { baseline } = getLetterVisualBounds(letter, letterSize, font);
     offCtx.fillStyle = color;
     offCtx.font = font;
@@ -119,7 +124,7 @@ export function poissonDiskSampling(
   minDistance: number,
   maxAttempts: number = 30,
   maxPoints: number = 100,
-  restrictedArea: { x: number; y: number; size: number; margin: number; letter?: string; color?: string } | undefined = undefined,
+  restrictedArea: { x: number; y: number; size: number; margin: number; letter?: string; color?: string; fontFamily?: string } | undefined = undefined,
   entityRadius: number = 0
 ): Array<[number, number]> {
   // Create active point list
@@ -149,7 +154,7 @@ export function poissonDiskSampling(
 
     // If there's a restricted area with a letter
     if (restrictedArea?.letter) {
-      const letterCtx = createLetterPath(document.createElement('canvas').getContext('2d')!, restrictedArea.letter, restrictedArea.size).ctx;
+      const letterCtx = createLetterPath(document.createElement('canvas').getContext('2d')!, restrictedArea.letter, restrictedArea.size, restrictedArea.fontFamily).ctx;
       const letterCenterX = restrictedArea.x + restrictedArea.size / 2;
       const letterCenterY = restrictedArea.y + restrictedArea.size / 2;
       
@@ -162,7 +167,8 @@ export function poissonDiskSampling(
         restrictedArea.size,
         x,
         y,
-        restrictedArea.color || 'black'  // Use provided color or default to black
+        restrictedArea.color || 'black',  // Use provided color or default to black
+        restrictedArea.fontFamily
       );
 
       // We want points OUTSIDE the letter for initial placement
@@ -267,7 +273,7 @@ export function createLetterPath(ctx: CanvasRenderingContext2D, letter: string, 
   canvas.height = size;
   const tempCtx = canvas.getContext('2d')!;
   
-  const font = `bold ${size}px ${fontFamily || "Arial"}`;
+  const font = `bold ${size}px ${formatFontFamily(fontFamily)}`;
   const { baseline } = getLetterVisualBounds(letter, size, font);
   tempCtx.font = font;
   tempCtx.textAlign = "center";

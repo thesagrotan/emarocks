@@ -56,6 +56,7 @@ export interface RestrictedAreaParams {
   size: number;
   margin: number;
   letter?: string;
+  fontFamily?: string;
 }
 
 /**

@@ -180,7 +180,7 @@ export class Blob {
   collideWithStaticShape(
     ctx: CanvasRenderingContext2D,
     shapeType: 'letter' | null,
-    shapeParams: { x: number; y: number; size: number; letter?: string } | null
+    shapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string } | null // <-- Add fontFamily
   ) {
     if (!shapeType || !shapeParams || !shapeParams.letter) return;
 
@@ -196,7 +196,9 @@ export class Blob {
         letterCenterY,
         shapeParams.size,
         particle.pos.x,
-        particle.pos.y
+        particle.pos.y,
+        "black",
+        shapeParams.fontFamily // <-- Pass fontFamily
       );
 
       if (isInLetter) {
@@ -208,7 +210,8 @@ export class Blob {
           letterCenterY,
           shapeParams.size,
           particle.pos.x,
-          particle.pos.y
+          particle.pos.y,
+          shapeParams.fontFamily // <-- Pass fontFamily
         );
 
         if (boundaryPoint) {
@@ -240,9 +243,10 @@ export class Blob {
     centerY: number,
     size: number,
     x: number,
-    y: number
+    y: number,
+    fontFamily?: string // <-- Add fontFamily
   ): Vector2 | null {
-    const isInside = isPointInLetter(ctx, letter, centerX, centerY, size, x, y);
+    const isInside = isPointInLetter(ctx, letter, centerX, centerY, size, x, y, "black", fontFamily);
     let minDist = Infinity;
     let nearestPoint = null;
 
@@ -256,7 +260,7 @@ export class Blob {
       while (radius <= maxRadius) {
         const testX = x + Math.cos(angle) * radius;
         const testY = y + Math.sin(angle) * radius;
-        const testInLetter = isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY);
+        const testInLetter = isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY, "black", fontFamily);
 
         if (testInLetter !== isInside) {
           const dist = Math.hypot(testX - x, testY - y);
@@ -337,7 +341,7 @@ export class Blob {
     gravity: number,
     damping: number,
     staticShapeType: 'letter' | null,
-    staticShapeParams: { x: number; y: number; size: number; letter?: string } | null,
+    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string } | null, // <-- Add fontFamily
     ctx: CanvasRenderingContext2D | null
   ) {
     // --- Force Application Phase ---
