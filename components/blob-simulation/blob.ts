@@ -1,10 +1,18 @@
 import { Vector2 } from "three";
 import { Particle } from "./particle";
 import { Spring } from "./spring";
-import { isPointInLetter } from "./utils"; // Import the isPointInLetter function
+import { isPointInLetter, createLetterPath, analyzeLetter, Region } from "./utils"; // Add new imports
 
 // Temporary vector for calculations
 const tempVec = new Vector2();
+
+// Cache for letter regions to avoid recalculating
+const letterRegionsCache = new Map<string, {
+  regions: Region[];
+  timestamp: number;
+}>();
+
+const CACHE_LIFETIME = 1000; // Cache lifetime in milliseconds
 
 // Blob Class - represents a complete blob with particles and springs
 export class Blob {
@@ -17,8 +25,8 @@ export class Blob {
   initialArea: number;
   targetArea: number;
   repelDistance: number;
-  pressureConstant: number = 0.08; // Pressure constant
-  maxRepulsionForce: number = 0.5; // Cap for repulsion force magnitude
+  pressureConstant: number = 0.15; // Increased pressure constant
+  maxRepulsionForce: number = 0.8; // Increased repulsion force
   id: number = Math.random();
 
   constructor(x: number, y: number, edgePointCount: number, startSize: number, repelDistance: number) {
@@ -80,41 +88,33 @@ export class Blob {
     blobs.forEach((blobB) => {
       if (this.id === blobB.id) return;
 
-      // Use the same repelDistance for both blobs to ensure consistency
-      const effectiveRepelDistance = Math.max(this.repelDistance, blobB.repelDistance);
+      // Use a smaller effective repel distance
+      const effectiveRepelDistance = Math.min(this.repelDistance, blobB.repelDistance);
       
       const distBetweenCentersSq = this.centre.distanceToSquared(blobB.centre);
-      // Use radii squared for comparison to avoid sqrt
       const combinedRadii = this.maxRadius + blobB.maxRadius;
       const interactionRangeSq = Math.pow(combinedRadii + effectiveRepelDistance, 2);
 
-      // Optimization: Broad phase check based on centers and radii + repel distance
       if (distBetweenCentersSq > interactionRangeSq) return;
 
-      // Narrow phase: Check particle pairs
       this.particles.forEach((particleA) => {
         blobB.particles.forEach((particleB) => {
           tempVec.copy(particleA.pos).sub(particleB.pos);
-          const distSq = tempVec.lengthSq(); // Use squared distance
+          const distSq = tempVec.lengthSq();
 
-          // Apply repulsion force if within repelDistance squared
-          const repelDistSq = effectiveRepelDistance * effectiveRepelDistance;
-          if (distSq > 1e-12 && distSq < repelDistSq) { // Compare squared distances
+          // Only repel when very close
+          if (distSq > 1e-12 && distSq < effectiveRepelDistance * effectiveRepelDistance) {
             const dist = Math.sqrt(distSq);
             const overlap = effectiveRepelDistance - dist;
 
-            // Calculate force magnitude based on overlap and strength
-            let forceMagnitude = overlap * interactionStrength;
+            // Stronger repulsion at very close distances
+            let forceMagnitude = overlap * interactionStrength * (1 + Math.max(0, (4 - dist) / 4));
 
-            // Cap the force magnitude
             forceMagnitude = Math.min(forceMagnitude, this.maxRepulsionForce);
-
-            // Normalize direction vector (reuse tempVec) and apply magnitude
             tempVec.multiplyScalar(forceMagnitude / dist);
 
-            // Apply forces ensuring they are finite
             particleA.applyForce(tempVec);
-            particleB.applyForce(tempVec.multiplyScalar(-1)); // Apply opposite force
+            particleB.applyForce(tempVec.multiplyScalar(-1));
           }
         });
       });
@@ -149,39 +149,34 @@ export class Blob {
     const currentArea = this.area;
     if (currentArea < 1e-6 || this.targetArea < 1e-6) return;
 
-    // Make pressure force proportional to the difference ratio, but prevent extreme forces
+    // Calculate pressure to maintain shape and push against boundaries
     const areaRatio = this.targetArea / currentArea;
-    // Clamp the ratio to prevent excessive forces when area is very small
-    const clampedRatio = Math.max(0.5, Math.min(areaRatio, 2.0));
+    const clampedRatio = Math.max(0.5, Math.min(areaRatio, 2.5)); // Allow more expansion
     const pressureDifference = clampedRatio - 1;
 
     const forceSize = pressureDifference * this.pressureConstant;
-
-    // Limit the maximum force size to prevent instability
-    const maxPressureForce = 0.1; // Example cap
+    const maxPressureForce = 0.2; // Increased max pressure force
     const cappedForceSize = Math.max(-maxPressureForce, Math.min(forceSize, maxPressureForce));
 
     this.particles.forEach((particle, i) => {
       const prev = this.particles[(i + this.edgePointCount - 1) % this.edgePointCount];
       const next = this.particles[(i + 1) % this.edgePointCount];
 
-      // Calculate edge vectors from the particle to its neighbors
+      // Calculate edge vectors and normal
       const toPrev = tempVec.copy(prev.pos).sub(particle.pos);
-      const toNext = new Vector2().copy(next.pos).sub(particle.pos); // Use a separate Vector2 instance
+      const toNext = new Vector2().copy(next.pos).sub(particle.pos);
+      const edgeVector = toNext.sub(toPrev);
+      const outwardNormal = new Vector2(-edgeVector.y, edgeVector.x);
 
-      // Calculate outward normal using the cross product concept (for 2D)
-      const edgeVector = toNext.sub(toPrev); // Vector along the edge (next - prev)
-      const outwardNormal = new Vector2(-edgeVector.y, edgeVector.x); // Perpendicular vector
-
-      if (outwardNormal.lengthSq() < 1e-12) return; // Skip if normal is zero length
-
+      if (outwardNormal.lengthSq() < 1e-12) return;
       outwardNormal.normalize();
+
+      // Apply pressure force
       outwardNormal.multiplyScalar(cappedForceSize);
       particle.applyForce(outwardNormal);
     });
   }
 
-  // Collision with Static Obstacles
   collideWithStaticShape(
     ctx: CanvasRenderingContext2D,
     shapeType: 'letter' | null,
@@ -189,101 +184,94 @@ export class Blob {
   ) {
     if (!shapeType || !shapeParams || !shapeParams.letter) return;
 
-    // For letter shapes
-    if (shapeType === 'letter' && shapeParams.letter) {
-      const letterCenterX = shapeParams.x + shapeParams.size / 2;
-      const letterCenterY = shapeParams.y + shapeParams.size / 2;
-      
-      // Cache letter bounds for optimization
-      const letterBounds = {
-        minX: shapeParams.x,
-        minY: shapeParams.y,
-        maxX: shapeParams.x + shapeParams.size,
-        maxY: shapeParams.y + shapeParams.size,
-      };
-      
-      // Check ALL particles for collision with the letter shape
-      for (let i = 0; i < this.particles.length; i++) {
-        const particle = this.particles[i];
-        
-        // Quick bounds check first (simple optimization)
-        if (
-          particle.pos.x >= letterBounds.minX - 5 && 
-          particle.pos.x <= letterBounds.maxX + 5 && 
-          particle.pos.y >= letterBounds.minY - 5 && 
-          particle.pos.y <= letterBounds.maxY + 5
-        ) {
-          // Test if particle is actually inside the letter shape
-          const isInside = isPointInLetter(
-            ctx,
-            shapeParams.letter,
-            letterCenterX,
-            letterCenterY,
-            shapeParams.size,
-            particle.pos.x,
-            particle.pos.y
-          );
+    const letterCenterX = shapeParams.x + shapeParams.size / 2;
+    const letterCenterY = shapeParams.y + shapeParams.size / 2;
+
+    // Process all particles
+    this.particles.forEach((particle) => {
+      const isInLetter = isPointInLetter(
+        ctx,
+        shapeParams.letter!,
+        letterCenterX,
+        letterCenterY,
+        shapeParams.size,
+        particle.pos.x,
+        particle.pos.y
+      );
+
+      if (isInLetter) {
+        // Find nearest point outside the letter
+        const boundaryPoint = this.findNearestLetterPoint(
+          ctx,
+          shapeParams.letter!,
+          letterCenterX,
+          letterCenterY,
+          shapeParams.size,
+          particle.pos.x,
+          particle.pos.y
+        );
+
+        if (boundaryPoint) {
+          // Move the particle directly to the boundary point
+          particle.pos.copy(boundaryPoint);
           
-          if (isInside) {
-            // Calculate vector from center of letter to particle
-            const toParticle = new Vector2(
-              particle.pos.x - letterCenterX,
-              particle.pos.y - letterCenterY
-            );
-            
-            // If vector is near zero, use a random direction
-            if (toParticle.lengthSq() < 0.1) {
-              const randomAngle = Math.random() * Math.PI * 2;
-              toParticle.set(Math.cos(randomAngle), Math.sin(randomAngle));
-            }
-            
-            // Normalize and apply a strong push force
-            toParticle.normalize();
-            
-            // Use a strong push force
-            const pushForce = 3.0;
-            toParticle.multiplyScalar(pushForce);
-            
-            // Apply this strong force to immediately push the particle out
-            particle.applyForce(toParticle);
-            
-            // Also directly modify velocity to ensure immediate response
-            const escapeVelocity = toParticle.clone().multiplyScalar(0.5);
-            particle.vel.add(escapeVelocity);
-            
-            // Apply strong damping to other directions to prevent oscillation
-            const dampingFactor = 0.3;
-            particle.vel.multiplyScalar(dampingFactor);
-            
-            // For severely stuck particles, teleport them slightly outside
-            if (particle.stuckFrames === undefined) {
-              particle.stuckFrames = 0;
-            }
-            
-            particle.stuckFrames++;
-            
-            // If stuck for multiple frames, teleport it out
-            if (particle.stuckFrames > 5) {
-              // Calculate escape position (outside the letter)
-              const escapeDist = Math.max(10, shapeParams.size * 0.1);
-              const escapePos = toParticle.clone().normalize().multiplyScalar(escapeDist);
-              
-              // Move particle directly
-              particle.pos.x += escapePos.x;
-              particle.pos.y += escapePos.y;
-              
-              // Reset stuck counter
-              particle.stuckFrames = 0;
-            }
-          } else {
-            // Not inside, reset stuck counter if it exists
-            if (particle.stuckFrames !== undefined) {
-              particle.stuckFrames = 0;
-            }
+          // Reflect velocity to bounce off the boundary
+          const normal = new Vector2(
+            particle.pos.x - letterCenterX,
+            particle.pos.y - letterCenterY
+          ).normalize();
+
+          const velocityDot = particle.vel.dot(normal);
+          if (velocityDot < 0) {
+            // Moving into the letter, reflect velocity
+            particle.vel.addScaledVector(normal, -2 * velocityDot);
+            // Add damping to the reflection
+            particle.vel.multiplyScalar(0.5);
           }
         }
       }
+    });
+  }
+
+  private findNearestLetterPoint(
+    ctx: CanvasRenderingContext2D,
+    letter: string,
+    centerX: number,
+    centerY: number,
+    size: number,
+    x: number,
+    y: number
+  ): Vector2 | null {
+    const isInside = isPointInLetter(ctx, letter, centerX, centerY, size, x, y);
+    let minDist = Infinity;
+    let nearestPoint = null;
+
+    // Search in eight directions first for quick escape
+    const directions = 16;
+    for (let i = 0; i < directions; i++) {
+      const angle = (i * Math.PI * 2) / directions;
+      let radius = 2; // Start with small steps
+      const maxRadius = size;
+      
+      while (radius <= maxRadius) {
+        const testX = x + Math.cos(angle) * radius;
+        const testY = y + Math.sin(angle) * radius;
+        const testInLetter = isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY);
+
+        if (testInLetter !== isInside) {
+          const dist = Math.hypot(testX - x, testY - y);
+          if (dist < minDist) {
+            minDist = dist;
+            nearestPoint = new Vector2(testX, testY);
+            // Found a point, no need to search further in this direction
+            break;
+          }
+        }
+        radius += 2; // Increment search radius
+      }
     }
+
+    return nearestPoint;
   }
 
   draw(ctx: CanvasRenderingContext2D, fillColor: string, strokeColor: string) {
@@ -357,11 +345,40 @@ export class Blob {
     this.maintainPressure();
     this.springs.forEach((spring) => spring.update(springTension));
 
+    // Apply density-based pressure adjustment
+    if (ctx && staticShapeType === 'letter' && staticShapeParams?.letter) {
+      const letterCenterX = staticShapeParams.x + staticShapeParams.size / 2;
+      const letterCenterY = staticShapeParams.y + staticShapeParams.size / 2;
+      const isInLetter = isPointInLetter(
+        ctx,
+        staticShapeParams.letter,
+        letterCenterX,
+        letterCenterY,
+        staticShapeParams.size,
+        this.centre.x,
+        this.centre.y
+      );
+
+      // Calculate local density and adjust pressure accordingly
+      const targetArea = this.initialArea * maxExpansionFactor;
+      const currentArea = this.area;
+      const areaRatio = currentArea / targetArea;
+
+      // If we're in a region with higher density, increase expansion force
+      if (areaRatio < 1) {
+        this.targetArea = this.initialArea * (maxExpansionFactor * 1.2);
+      } else {
+        this.targetArea = this.initialArea * maxExpansionFactor;
+      }
+    }
+
     // Apply external forces (gravity, inter-blob repulsion, static collision)
     this.particles.forEach((particle) => {
-      particle.applyForce(new Vector2(0, gravity * 0.1)); // Apply gravity per particle
+      particle.applyForce(new Vector2(0, gravity * 0.1));
     });
+
     this.repelBlobs(blobs, interactionStrength);
+    
     if (ctx && staticShapeType && staticShapeParams) {
       this.collideWithStaticShape(ctx, staticShapeType, staticShapeParams);
     }
