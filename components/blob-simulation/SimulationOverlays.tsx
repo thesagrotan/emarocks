@@ -1,51 +1,21 @@
 "use client"
 
-import React from "react"
-import { Download, Pause, Play, Plus, Eraser } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import React from 'react';
+import { Play, Pause, Plus, Minus, Download } from 'lucide-react';
+// Guessing the path might be for a standard Button component if IconButton is not found
+// You might need to adapt usage if this is not a direct replacement for IconButton
+import { Button } from '@/components/ui/button'; 
+import { ToolMode } from './types'
 
-interface SimulationOverlayProps {
-  /**
-   * Whether the simulation is currently animating
-   */
-  isAnimating: boolean
-  
-  /**
-   * Whether parameters are currently being updated live
-   */
-  isLiveEditing: boolean
-  
-  /**
-   * Current active tool mode (add, remove, or null)
-   */
-  toolMode: 'add' | 'remove' | null
-  
-  /**
-   * Handler for toggling animation state
-   */
-  onToggleAnimation: () => void
-  
-  /**
-   * Handler for setting tool mode
-   */
-  onSetToolMode: (mode: 'add' | 'remove' | null) => void
-  
-  /**
-   * Handler for downloading SVG
-   */
-  onDownloadSVG: () => void
+interface SimulationOverlaysProps {
+  isAnimating: boolean;
+  isLiveEditing: boolean;
+  toolMode: ToolMode | null;
+  onToggleAnimation: () => void;
+  onSetToolMode: (mode: ToolMode | null) => void;
+  onDownloadSVG: () => void;
 }
 
-/**
- * SimulationOverlays component
- * 
- * Container for all overlay elements displayed on top of the simulation canvas.
- * This includes:
- * - Live editing indicator
- * - Play/pause button
- * - Tool buttons
- * - Download button
- */
 export function SimulationOverlays({
   isAnimating,
   isLiveEditing,
@@ -53,62 +23,60 @@ export function SimulationOverlays({
   onToggleAnimation,
   onSetToolMode,
   onDownloadSVG
-}: SimulationOverlayProps) {
+}: SimulationOverlaysProps) {
+  // NOTE: Using Button might require changes here if IconButton had specific props/styling
+  // Example: You might need to add size="icon" variant="ghost" etc. to the Button components below
   return (
-    <>
-      {/* Live Editing Indicator */}
-      {isLiveEditing && (
-        <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-xs">
-          Updating...
-        </div>
-      )}
-      
-      {/* Main Overlay Controls */}
-      <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center pointer-events-none">
-        {/* Play/Pause Button */}
+    <div className="absolute inset-0 flex flex-col justify-between p-3 pointer-events-none">
+      {/* Top-right controls */}
+      <div className="flex justify-end gap-2 pointer-events-auto">
+        {/* Add Shape Button - Adapt as needed */}
         <Button
-          variant="outline"
-          size="icon"
-          onClick={onToggleAnimation}
-          className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
-          aria-label={isAnimating ? 'Pause simulation' : 'Play simulation'}
+          variant={toolMode === 'add' ? "secondary" : "ghost"} // Example adaptation
+          size="icon" // Example adaptation
+          aria-label="Add Shape"
+          onClick={() => onSetToolMode('add')}
         >
-          {isAnimating ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+          <Plus className="h-4 w-4" />
         </Button>
-
-        {/* Tool Buttons */}
-        <div className="flex gap-2 pointer-events-auto">
-          <Button
-            variant="outline" 
-            size="icon"
-            onClick={() => onSetToolMode('add')}
-            className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${toolMode === 'add' ? 'ring-2 ring-white' : ''}`}
-            aria-label="Add Shape Tool"
-          >
-            <Plus className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="outline" 
-            size="icon"
-            onClick={() => onSetToolMode('remove')}
-            className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${toolMode === 'remove' ? 'ring-2 ring-white' : ''}`}
-            aria-label="Remove Shape Tool"
-          >
-            <Eraser className="w-5 h-5" />
-          </Button>
-        </div>
-
-        {/* Download Button */}
+        {/* Remove Shape Button - Adapt as needed */}
         <Button
-          variant="outline" 
-          size="icon"
-          onClick={onDownloadSVG}
-          className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
-          aria-label="Download as SVG"
+          variant={toolMode === 'remove' ? "secondary" : "ghost"} // Example adaptation
+          size="icon" // Example adaptation
+          aria-label="Remove Shape"
+          onClick={() => onSetToolMode('remove')}
         >
-          <Download className="w-5 h-5" />
+          <Minus className="h-4 w-4" />
+        </Button>
+        {/* Download SVG Button - Adapt as needed */}
+        <Button
+          variant="ghost" // Example adaptation
+          size="icon" // Example adaptation
+          aria-label="Download SVG"
+          onClick={onDownloadSVG}
+        >
+          <Download className="h-4 w-4" />
         </Button>
       </div>
-    </>
+
+      {/* Bottom-left controls */}
+      <div className="flex items-center gap-2 pointer-events-auto">
+        {/* Play/Pause Button - Adapt as needed */}
+        <Button
+          size="icon" // Example adaptation
+          aria-label={isAnimating ? 'Pause' : 'Play'}
+          onClick={onToggleAnimation}
+          // className="bg-primary text-primary-foreground hover:bg-primary/90" // Standard Button might not need this
+        >
+          {isAnimating ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </Button>
+        {/* Live Editing Indicator */}
+        {isLiveEditing && (
+          <span className="text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
+            Applying changes...
+          </span>
+        )}
+      </div>
+    </div>
   );
 }

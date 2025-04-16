@@ -56,17 +56,15 @@
 /* Custom styles without @apply */
 body {
   font-family: "Inter", sans-serif;
-  background-color: #f4f5f5;
-  color: #04050c;
+  background-color: hsl(var(--background)); /* Use CSS variables */
+  color: hsl(var(--foreground)); /* Use CSS variables */
   margin: 0;
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  /* Removed padding: 1rem; - handled by page.tsx */
+  display: flex; /* Keep flex if needed for overall layout */
+  flex-direction: column; /* Keep flex if needed */
+  align-items: center; /* Keep flex if needed */
   min-height: 100vh;
+  width: 100%; /* Ensure body takes full width */
 }
 
-.dark body {
-  background-color: #0e0f11;
-  color: #f6fefa;
-}
+/* Removed dark body styles as ThemeProvider handles it */

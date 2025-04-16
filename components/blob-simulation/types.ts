@@ -66,10 +66,6 @@ export interface SimulationParams {
   /** Icon color for the theme toggle button in dark theme */
   themeToggleIconColorDark: string;
 
-  // Interaction/Tools
-  /** Current interaction tool mode ('add', 'remove', or null for none) */
-  toolMode: 'add' | 'remove' | null;
-
   // Restricted Area / Static Obstacle
   /** Whether the restricted area (e.g., letter) is enabled */
   restrictedAreaEnabled: boolean;

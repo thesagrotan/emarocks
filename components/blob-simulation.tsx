@@ -5,7 +5,8 @@ import { useTheme } from "next-themes"
 import { Vector2 } from "three"
 
 // Import refactored components and types
-import { SimulationControls } from "./blob-simulation/simulation-controls"
+import { SimulationPhysicsPanel } from "./blob-simulation/simulation-physics-panel"; // Renamed import
+import { AppearanceLayoutControls } from "./blob-simulation/appearance-layout-controls"; // Renamed import
 import { Blob } from "./blob-simulation/blob"
 import { SimulationParamsContext } from "./blob-simulation/context"
 import {
@@ -15,10 +16,11 @@ import {
   useLetterCacheInvalidation
 } from "./blob-simulation/hooks"
 import * as SimulationUtils from "./blob-simulation/utils"
-import { SimulationParams, RestrictedAreaParams } from "./blob-simulation/types"
+import { SimulationParams, RestrictedAreaParams, ToolMode } from "./blob-simulation/types"
 import { SimulationCanvas, drawSimulation } from "./blob-simulation/SimulationCanvas"
 import { SimulationOverlays } from "./blob-simulation/SimulationOverlays"
 import { logError, logWarn, logInfo } from "@/shared"; // Import logger
+import { paramDescriptions } from "./blob-simulation/param-descriptions"; // Import descriptions
 
 /**
  * Safely retrieves the device pixel ratio, returning 1 if `window` is not available (SSR).
@@ -78,6 +80,15 @@ export function BlobSimulation() {
    * @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]}
    */
   const [isMounted, setIsMounted] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null); // Ref for file input
+
+  // --- Tool Mode State ---
+  /**
+   * Separate state for the currently active tool mode ('add', 'remove', or null).
+   * @type {[ToolMode | null, React.Dispatch<React.SetStateAction<ToolMode | null>>]}
+   */
+  const [toolMode, setToolMode] = useState<ToolMode | null>(null);
 
   // --- Theme ---
   /**
@@ -141,7 +152,6 @@ export function BlobSimulation() {
       themeToggleIconColorDark: "#F6FEFA",
       
       // Interaction/Tools
-      toolMode: null,
 
       // Restricted Area / Static Obstacle
       restrictedAreaEnabled: true,
@@ -361,6 +371,93 @@ export function BlobSimulation() {
     }
   }, [isMounted, draw, initializeSimulation]);
 
+  // --- Settings Download/Load Handlers ---
+
+  /**
+   * Triggers the download of the current simulation settings as a JSON file.
+   */
+  const handleDownloadSettings = useCallback(() => {
+    if (!isMounted) return;
+    try {
+      const settingsString = JSON.stringify(simulationParams, null, 2);
+      const blob = new Blob([settingsString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "blob-settings.json";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      logInfo("Settings downloaded.", undefined, "handleDownloadSettings");
+    } catch (error) {
+      logError("Error downloading settings:", error, "handleDownloadSettings");
+    }
+  }, [simulationParams, isMounted]);
+
+  /**
+   * Handles the file selection event for loading settings.
+   * Reads the file, parses JSON, updates state, and restarts the simulation.
+   */
+  const handleLoadSettings = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isMounted || !event.target.files || event.target.files.length === 0) {
+      return;
+    }
+    const file = event.target.files[0];
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result;
+        if (typeof content !== 'string') {
+          throw new Error("Failed to read file content.");
+        }
+        const loadedParams = JSON.parse(content);
+
+        // Basic validation (can be expanded)
+        if (typeof loadedParams !== 'object' || loadedParams === null || typeof loadedParams.shapeCount === 'undefined') {
+           throw new Error("Invalid settings file format.");
+        }
+
+        // Merge loaded settings with existing defaults to handle missing keys
+        setSimulationParams(prev => ({ ...prev, ...loadedParams }));
+        logInfo("Settings loaded successfully. Restarting simulation...", loadedParams, "handleLoadSettings");
+        
+        // Restart simulation after state update
+        // Use setTimeout to ensure state update completes before restart
+        setTimeout(handleRestart, 0);
+
+      } catch (error) {
+        logError("Error loading settings:", error, "handleLoadSettings");
+        alert(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        // Reset file input value to allow loading the same file again
+        if (event.target) {
+          event.target.value = '';
+        }
+      }
+    };
+
+    reader.onerror = (e) => {
+      logError("Error reading file:", e, "handleLoadSettings");
+      alert("Failed to read the selected file.");
+       // Reset file input value
+       if (event.target) {
+         event.target.value = '';
+       }
+    };
+
+    reader.readAsText(file);
+  }, [isMounted, handleRestart]); // Added handleRestart dependency
+
+  /**
+   * Programmatically clicks the hidden file input element.
+   */
+  const triggerFileInput = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+
   // --- Lifecycle Effects ---
 
   /**
@@ -579,8 +676,10 @@ export function BlobSimulation() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const { toolMode, containerMargin, minBlobSize, repelDistance, edgePointCount } = simulationParams;
-      if (!toolMode) return;
+      // Read toolMode from the separate state
+      if (!toolMode) return; 
+      
+      const { containerMargin, minBlobSize, repelDistance, edgePointCount } = simulationParams;
 
       // Calculate click position with proper scaling
       const rect = canvas.getBoundingClientRect();
@@ -629,19 +728,17 @@ export function BlobSimulation() {
     } catch (error) {
       logError("Error handling canvas click:", error, "handleCanvasClick"); // Replaced console.error
     }
-  }, [simulationParams, draw]);
+  // Update dependency array to include the separate toolMode state
+  }, [simulationParams, draw, toolMode]); 
 
   /**
-   * Handles changes to the active tool mode ('add', 'remove', or null).
-   * Toggles the mode off if the same mode is selected again.
+   * Handles changes to the active tool mode using the separate state.
    * @param {'add' | 'remove' | null} mode - The tool mode to activate or null to deactivate.
    * @type {(mode: 'add' | 'remove' | null) => void}
    */
-  const handleSetToolMode = (mode: 'add' | 'remove' | null) => {
-    setSimulationParams(prev => ({ 
-      ...prev, 
-      toolMode: prev.toolMode === mode ? null : mode 
-    }));
+  const handleSetToolMode = (mode: ToolMode | null) => {
+    // Use the separate state setter
+    setToolMode(prev => prev === mode ? null : mode); 
   };
 
   /** Memoized calculation of restricted area parameters. @type {RestrictedAreaParams | undefined} */
@@ -674,13 +771,20 @@ export function BlobSimulation() {
   // Render placeholder if component is not yet mounted to prevent hydration errors.
   if (!isMounted) {
     return (
-      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">
-        <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
-          <div className="w-full h-full rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-            <p className="text-neutral-400">Loading simulation...</p>
+      // Adjust placeholder to reflect fixed sidebar layout conceptually
+      <div className="relative w-full min-h-screen p-4 md:p-6">
+        {/* Fixed Placeholders */}
+        <div className={`fixed top-0 left-0 bottom-0 w-[320px] h-screen bg-neutral-100 dark:bg-neutral-800 rounded-lg m-4 md:m-6 z-10`}></div>
+        <div className={`fixed top-0 right-0 bottom-0 w-[320px] h-screen bg-neutral-100 dark:bg-neutral-800 rounded-lg m-4 md:m-6 z-10`}></div>
+        
+        {/* Centered Canvas Placeholder */}
+        <div className="flex justify-center items-center min-h-screen">
+          <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0">
+            <div className="w-full h-full rounded-lg bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center">
+              <p className="text-neutral-400">Loading simulation...</p>
+            </div>
           </div>
         </div>
-        <div className="w-full max-w-[320px] h-[500px] bg-neutral-100 dark:bg-neutral-800 rounded-lg"></div>
       </div>
     );
   }
@@ -688,39 +792,70 @@ export function BlobSimulation() {
   // --- Render ---
   return (
     <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
-      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">
-        {/* Canvas Container with Overlays */}
-        <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
-          {/* Canvas Component */}
-          <SimulationCanvas
-            canvasRef={canvasRef}
-            blobsRef={blobsRef}
-            currentTheme={currentTheme}
+      {/* Main container - relative positioning context */}
+      <div className="relative w-full min-h-screen">
+        
+        {/* Left Fixed Sidebar */}
+        <div className={`fixed top-0 left-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
+          <SimulationPhysicsPanel
             params={simulationParams}
-            calculateRestrictedAreaParams={calculateRestrictedAreaParams}
-            canvasSize={CANVAS_SIZE}
-            isUsingTool={!!simulationParams.toolMode}
-            onCanvasClick={handleCanvasClick}
-          />
-          
-          {/* Overlays Component */}
-          <SimulationOverlays
-            isAnimating={isAnimating}
-            isLiveEditing={isLiveEditing}
-            toolMode={simulationParams.toolMode}
-            onToggleAnimation={toggleAnimation}
-            onSetToolMode={handleSetToolMode}
+            onParamChange={handleParamChange}
+            onRestart={handleRestart}
             onDownloadSVG={downloadSVG}
+            onDownloadSettings={handleDownloadSettings}
+            onLoadSettings={handleLoadSettings}
+            triggerFileInput={triggerFileInput}
+            isAnimating={isAnimating}
+            paramDescriptions={paramDescriptions}
+            canvasSize={CANVAS_SIZE} // Pass canvasSize here
           />
         </div>
 
-        {/* Settings Panel */}
-        <SimulationControls 
-          params={simulationParams} 
-          onParamChange={handleParamChange}
-          onRestart={handleRestart}
-          isAnimating={isAnimating}
-        />
+        {/* Center Content Area (Canvas) */}
+        {/* Add padding to prevent overlap with fixed sidebars */}
+        <div 
+          className="flex justify-center items-center min-h-screen"
+          style={{ 
+            paddingLeft: `344px`, 
+            paddingRight: `344px` 
+          }}
+        >
+          <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0">
+            {/* Canvas Component */}
+            <SimulationCanvas
+              canvasRef={canvasRef}
+              blobsRef={blobsRef}
+              currentTheme={currentTheme}
+              params={simulationParams}
+              calculateRestrictedAreaParams={calculateRestrictedAreaParams}
+              canvasSize={CANVAS_SIZE}
+              isUsingTool={!!toolMode}
+              onCanvasClick={handleCanvasClick}
+            />
+            
+            {/* Overlays Component - Ensure z-index is appropriate if needed */}
+            <SimulationOverlays
+              isAnimating={isAnimating}
+              isLiveEditing={isLiveEditing}
+              toolMode={toolMode}
+              onToggleAnimation={toggleAnimation}
+              onSetToolMode={handleSetToolMode}
+              onDownloadSVG={downloadSVG}
+            />
+          </div>
+        </div>
+
+        {/* Right Fixed Sidebar */}
+        <div className={`fixed top-0 right-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
+          <AppearanceLayoutControls
+            params={simulationParams}
+            onParamChange={handleParamChange}
+            paramDescriptions={paramDescriptions}
+            currentTheme={currentTheme} // Pass currentTheme down
+            isAnimating={isAnimating} // Pass isAnimating here
+          />
+        </div>
+
       </div>
     </SimulationParamsContext.Provider>
   );
