@@ -236,6 +236,7 @@ export class Blob {
     });
   }
 
+// Improved: Finer search for nearest boundary and better normal estimation
   private findNearestLetterPoint(
     ctx: CanvasRenderingContext2D,
     letter: string,
@@ -244,37 +245,50 @@ export class Blob {
     size: number,
     x: number,
     y: number,
-    fontFamily?: string // <-- Add fontFamily
+    fontFamily?: string
   ): Vector2 | null {
     const isInside = isPointInLetter(ctx, letter, centerX, centerY, size, x, y, "black", fontFamily);
     let minDist = Infinity;
     let nearestPoint = null;
-
-    // Search in eight directions first for quick escape
-    const directions = 16;
+    let bestNormal = null;
+    const directions = 24;
+    const step = 0.5; // Finer step for precision
+    const maxRadius = size;
     for (let i = 0; i < directions; i++) {
       const angle = (i * Math.PI * 2) / directions;
-      let radius = 2; // Start with small steps
-      const maxRadius = size;
-      
+      let radius = step;
+      let lastInLetter = isInside;
       while (radius <= maxRadius) {
         const testX = x + Math.cos(angle) * radius;
         const testY = y + Math.sin(angle) * radius;
         const testInLetter = isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY, "black", fontFamily);
-
-        if (testInLetter !== isInside) {
+        if (testInLetter !== lastInLetter) {
           const dist = Math.hypot(testX - x, testY - y);
           if (dist < minDist) {
             minDist = dist;
             nearestPoint = new Vector2(testX, testY);
-            // Found a point, no need to search further in this direction
-            break;
+            // Estimate normal by central difference
+            const eps = 1;
+            const nX =
+              +isPointInLetter(ctx, letter, centerX, centerY, size, testX + eps, testY, "black", fontFamily)
+              - isPointInLetter(ctx, letter, centerX, centerY, size, testX - eps, testY, "black", fontFamily);
+            const nY =
+              +isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY + eps, "black", fontFamily)
+              - isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY - eps, "black", fontFamily);
+            const normal = new Vector2(nX, nY);
+            if (normal.lengthSq() > 0) normal.normalize();
+            bestNormal = normal;
           }
+          break;
         }
-        radius += 2; // Increment search radius
+        lastInLetter = testInLetter;
+        radius += step;
       }
     }
-
+    // Attach normal to the result for use in velocity reflection
+    if (nearestPoint && bestNormal) {
+      (nearestPoint as any).normal = bestNormal;
+    }
     return nearestPoint;
   }
 
@@ -327,6 +341,60 @@ export class Blob {
 
     path += " Z";
     return path;
+  }
+
+  // Call this after all particles have been updated
+  enforceLetterBoundaryAfterUpdate(
+    ctx: CanvasRenderingContext2D,
+    shapeType: 'letter' | null,
+    shapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string } | null
+  ) {
+    if (!shapeType || !shapeParams || !shapeParams.letter) return;
+    const letterCenterX = shapeParams.x + shapeParams.size / 2;
+    const letterCenterY = shapeParams.y + shapeParams.size / 2;
+    this.particles.forEach((particle) => {
+      const isInLetter = isPointInLetter(
+        ctx,
+        shapeParams.letter!,
+        letterCenterX,
+        letterCenterY,
+        shapeParams.size,
+        particle.pos.x,
+        particle.pos.y,
+        "black",
+        shapeParams.fontFamily
+      );
+      if (isInLetter) {
+        const boundaryPoint = this.findNearestLetterPoint(
+          ctx,
+          shapeParams.letter!,
+          letterCenterX,
+          letterCenterY,
+          shapeParams.size,
+          particle.pos.x,
+          particle.pos.y,
+          shapeParams.fontFamily
+        );
+        if (boundaryPoint) {
+          const prevPos = particle.pos.clone();
+          particle.pos.copy(boundaryPoint);
+          // Use improved normal if available
+          let normal = (boundaryPoint as any).normal;
+          if (!normal || normal.lengthSq() === 0) {
+            normal = new Vector2(
+              boundaryPoint.x - prevPos.x,
+              boundaryPoint.y - prevPos.y
+            ).normalize();
+          }
+          // Reflect velocity if moving into the boundary
+          const velocityDot = particle.vel.dot(normal);
+          if (velocityDot < 0) {
+            particle.vel.addScaledVector(normal, -2 * velocityDot);
+            particle.vel.multiplyScalar(0.3); // Stronger damping for stability
+          }
+        }
+      }
+    });
   }
 
   update(
@@ -392,6 +460,11 @@ export class Blob {
     this.particles.forEach((particle) => {
       particle.update(canvasWidth, canvasHeight, margin, isRoundedContainer, damping);
     });
+
+    // Enforce letter boundary after all updates (hard constraint)
+    if (ctx && staticShapeType === 'letter' && staticShapeParams?.letter) {
+      this.enforceLetterBoundaryAfterUpdate(ctx, staticShapeType, staticShapeParams);
+    }
 
     // Update blob state based on new particle positions
     this.updateCentre();

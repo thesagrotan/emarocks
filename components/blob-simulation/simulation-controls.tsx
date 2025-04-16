@@ -29,6 +29,35 @@ export function SimulationControls({
     return ['shapeCount', 'edgePointCount', 'minBlobSize'].includes(param as string);
   };
 
+  // Short descriptions for each setting
+  const paramDescriptions: Record<string, string> = {
+    shapeCount: "Total number of blobs generated and animated in the simulation.",
+    edgePointCount: "Number of points used to define the outline of each blob. Higher values make blobs smoother.",
+    minBlobSize: "Minimum radius for each blob. Controls the smallest possible blob size.",
+    repelDistance: "Distance at which blobs start to push each other away to avoid overlap.",
+    springTension: "How strongly each blob's edge points are pulled back to their original positions, affecting blob elasticity.",
+    interactionStrength: "Controls how much blobs influence each other's movement when they get close.",
+    damping: "Rate at which blob movement slows down, simulating friction or resistance.",
+    speed: "Multiplier for the simulation's animation speed. Higher values make blobs move faster.",
+    maxExpansionFactor: "Maximum amount a blob can expand beyond its initial size when interacting with others.",
+    isRoundedContainer: "If enabled, the simulation area is a circle instead of a rectangle.",
+    showBorder: "Show or hide the border around the simulation container.",
+    restrictedAreaEnabled: "Enable a special area (in the shape of a letter) that blobs will avoid.",
+    restrictedAreaLetter: "The character used to define the restricted area that blobs avoid.",
+    restrictedAreaSize: "The size (in pixels) of the restricted area letter.",
+    fontFamily: "Font family used to render the restricted area letter. Enter the name of any installed font.",
+    backgroundColor: "Background color for the simulation in light mode.",
+    blobFillColor: "Fill color for blobs in light mode.",
+    blobBorderColor: "Border color for blobs in light mode.",
+    letterColor: "Color of the restricted area letter in light mode.",
+    blobFillOpacity: "Opacity of the blob fill color in light mode. Lower values make blobs more transparent.",
+    darkBackgroundColor: "Background color for the simulation in dark mode.",
+    darkBlobFillColor: "Fill color for blobs in dark mode.",
+    darkBlobBorderColor: "Border color for blobs in dark mode.",
+    darkLetterColor: "Color of the restricted area letter in dark mode.",
+    darkBlobFillOpacity: "Opacity of the blob fill color in dark mode. Lower values make blobs more transparent."
+  };
+
   // Custom Label component with restart indicator and info tooltip
   const ParamLabel = ({ 
     htmlFor, 
@@ -37,12 +66,12 @@ export function SimulationControls({
     info
   }: { 
     htmlFor: string, 
-    param: keyof SimulationParams,
+    param: keyof SimulationParams | string,
     children: React.ReactNode,
-    info: string
+    info?: string
   }) => {
-    const needsRestart = requiresRestart(param);
-    
+    const needsRestart = requiresRestart(param as keyof SimulationParams);
+    const description = paramDescriptions[param as string] || info || "";
     return (
       <div className="flex items-center gap-2">
         <Label htmlFor={htmlFor} className="text-xs font-medium">
@@ -66,7 +95,7 @@ export function SimulationControls({
               <Info className="h-3 w-3 text-muted-foreground" />
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">{info}</p>
+              <p className="text-xs">{description}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -132,7 +161,7 @@ export function SimulationControls({
   };
 
   return (
-    <Card className="w-full max-w-[320px] h-[500px] overflow-y-auto">
+    <Card className="w-full max-w-full max-h-screen overflow-y-auto">
       <div className="p-4 space-y-4">
         {/* Restart Button */}
         <Button
@@ -149,14 +178,14 @@ export function SimulationControls({
             onClick={handleDownloadSettings}
             className="w-full"
           >
-            Download Settings (.md)
+            Download
           </Button>
           <Button
             variant="outline"
             onClick={handleLoadSettings}
             className="w-full"
           >
-            Load Settings (.md)
+            Load
           </Button>
         </div>
         {/* Shape Settings */}
@@ -165,7 +194,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="shapeCount" 
               param="shapeCount"
-              info="The number of blob shapes to generate in the simulation"
             >
               Shape Count ({params.shapeCount})
             </ParamLabel>
@@ -182,7 +210,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="edgePointCount" 
               param="edgePointCount"
-              info="The number of points that define the edge of each blob"
             >
               Edge Points ({params.edgePointCount})
             </ParamLabel>
@@ -199,7 +226,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="minBlobSize" 
               param="minBlobSize"
-              info="The minimum size of each blob"
             >
               Min Size ({params.minBlobSize})
             </ParamLabel>
@@ -212,6 +238,22 @@ export function SimulationControls({
               onValueChange={(val) => onParamChange('minBlobSize', val[0])}
             />
           </div>
+          <div className="space-y-1">
+            <ParamLabel 
+              htmlFor="maxExpansionFactor" 
+              param="maxExpansionFactor"
+            >
+              Max Expansion ({params.maxExpansionFactor.toFixed(1)})
+            </ParamLabel>
+            <Slider 
+              id="maxExpansionFactor" 
+              min={1} 
+              max={8} 
+              step={0.1} 
+              value={[params.maxExpansionFactor]} 
+              onValueChange={(val) => onParamChange('maxExpansionFactor', val[0])}
+            />
+          </div>
         </div>
 
         {/* Physics Settings */}
@@ -220,7 +262,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="repelDistance" 
               param="repelDistance"
-              info="How far blobs repel each other when they get too close"
             >
               Repel Distance ({params.repelDistance})
             </ParamLabel>
@@ -237,7 +278,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="springTension" 
               param="springTension"
-              info="How strongly the blob points are pulled back to their original positions"
             >
               Spring Tension ({params.springTension})
             </ParamLabel>
@@ -254,7 +294,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="interactionStrength" 
               param="interactionStrength"
-              info="How strongly blobs interact with each other"
             >
               Interaction ({params.interactionStrength})
             </ParamLabel>
@@ -271,7 +310,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="damping" 
               param="damping"
-              info="How quickly blob movement slows down"
             >
               Damping ({params.damping})
             </ParamLabel>
@@ -288,10 +326,9 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="speed" 
               param="speed"
-              info="Overall animation speed"
             >
               Speed ({params.speed})
-            </ParamLabel>
+            </ParamLabel> 
             <Slider 
               id="speed" 
               min={0} 
@@ -299,23 +336,6 @@ export function SimulationControls({
               step={0.1} 
               value={[params.speed]} 
               onValueChange={(val) => onParamChange('speed', val[0])}
-            />
-          </div>
-          <div className="space-y-1">
-            <ParamLabel 
-              htmlFor="maxExpansionFactor" 
-              param="maxExpansionFactor"
-              info="How much blobs can expand beyond their initial size"
-            >
-              Max Expansion ({params.maxExpansionFactor.toFixed(1)})
-            </ParamLabel>
-            <Slider 
-              id="maxExpansionFactor" 
-              min={1} 
-              max={8} 
-              step={0.1} 
-              value={[params.maxExpansionFactor]} 
-              onValueChange={(val) => onParamChange('maxExpansionFactor', val[0])}
             />
           </div>
         </div>
@@ -326,7 +346,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="container-rounded" 
               param="isRoundedContainer"
-              info="Makes the container circular instead of rectangular"
             >
               Rounded Container
             </ParamLabel>
@@ -340,7 +359,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="show-border" 
               param="showBorder"
-              info="Shows or hides the container border"
             >
               Show Border
             </ParamLabel>
@@ -358,7 +376,6 @@ export function SimulationControls({
             <ParamLabel 
               htmlFor="restricted-area" 
               param="restrictedAreaEnabled"
-              info="Creates a letter-shaped area that blobs avoid"
             >
               Restricted Area
             </ParamLabel>
@@ -374,7 +391,6 @@ export function SimulationControls({
                 <ParamLabel 
                   htmlFor="restrictedAreaLetter" 
                   param="restrictedAreaLetter"
-                  info="The letter that defines the restricted area"
                 >
                   Letter
                 </ParamLabel>
@@ -391,7 +407,6 @@ export function SimulationControls({
                 <ParamLabel 
                   htmlFor="restrictedAreaSize" 
                   param="restrictedAreaSize"
-                  info="The size of the letter in the restricted area"
                 >
                   Letter Size ({params.restrictedAreaSize})
                 </ParamLabel>
@@ -409,7 +424,6 @@ export function SimulationControls({
                 <ParamLabel
                   htmlFor="fontFamily"
                   param="fontFamily"
-                  info="Font family for the letter (type the name of any installed font)"
                 >
                   Letter Font
                 </ParamLabel>
@@ -436,7 +450,9 @@ export function SimulationControls({
           </TabsList>
           <TabsContent value="light-mode" className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="bg-color" className="text-xs">Background</Label>
+              <ParamLabel htmlFor="bg-color" param="backgroundColor">
+                Background
+              </ParamLabel>
               <input 
                 type="color" 
                 id="bg-color" 
@@ -446,7 +462,9 @@ export function SimulationControls({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="blob-fill" className="text-xs">Blob Fill</Label>
+              <ParamLabel htmlFor="blob-fill" param="blobFillColor">
+                Blob Fill
+              </ParamLabel>
               <input 
                 type="color" 
                 id="blob-fill" 
@@ -456,7 +474,9 @@ export function SimulationControls({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="blob-border" className="text-xs">Blob Border</Label>
+              <ParamLabel htmlFor="blob-border" param="blobBorderColor">
+                Blob Border
+              </ParamLabel>
               <input 
                 type="color" 
                 id="blob-border" 
@@ -466,7 +486,9 @@ export function SimulationControls({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="letter-color-light" className="text-xs">Letter Color</Label>
+              <ParamLabel htmlFor="letter-color-light" param="letterColor">
+                Letter Color
+              </ParamLabel>
               <input 
                 type="color" 
                 id="letter-color-light" 
@@ -476,7 +498,9 @@ export function SimulationControls({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="blobFillOpacity" className="text-xs font-medium">Fill Opacity ({params.blobFillOpacity.toFixed(2)})</Label>
+              <ParamLabel htmlFor="blobFillOpacity" param="blobFillOpacity">
+                Fill Opacity ({params.blobFillOpacity.toFixed(2)})
+              </ParamLabel>
               <Slider 
                 id="blobFillOpacity" 
                 min={0} 
@@ -489,7 +513,9 @@ export function SimulationControls({
           </TabsContent>
           <TabsContent value="dark-mode" className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="dark-bg-color" className="text-xs">Background</Label>
+              <ParamLabel htmlFor="dark-bg-color" param="darkBackgroundColor">
+                Background
+              </ParamLabel>
               <input 
                 type="color" 
                 id="dark-bg-color" 
@@ -499,7 +525,9 @@ export function SimulationControls({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="dark-blob-fill" className="text-xs">Blob Fill</Label>
+              <ParamLabel htmlFor="dark-blob-fill" param="darkBlobFillColor">
+                Blob Fill
+              </ParamLabel>
               <input 
                 type="color" 
                 id="dark-blob-fill" 
@@ -509,7 +537,9 @@ export function SimulationControls({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="dark-blob-border" className="text-xs">Blob Border</Label>
+              <ParamLabel htmlFor="dark-blob-border" param="darkBlobBorderColor">
+                Blob Border
+              </ParamLabel>
               <input 
                 type="color" 
                 id="dark-blob-border" 
@@ -519,7 +549,9 @@ export function SimulationControls({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="letter-color-dark" className="text-xs">Letter Color</Label>
+              <ParamLabel htmlFor="letter-color-dark" param="darkLetterColor">
+                Letter Color
+              </ParamLabel>
               <input 
                 type="color" 
                 id="letter-color-dark" 
@@ -529,7 +561,9 @@ export function SimulationControls({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="darkBlobFillOpacity" className="text-xs font-medium">Fill Opacity ({params.darkBlobFillOpacity.toFixed(2)})</Label>
+              <ParamLabel htmlFor="darkBlobFillOpacity" param="darkBlobFillOpacity">
+                Fill Opacity ({params.darkBlobFillOpacity.toFixed(2)})
+              </ParamLabel>
               <Slider 
                 id="darkBlobFillOpacity" 
                 min={0} 

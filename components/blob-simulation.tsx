@@ -135,18 +135,18 @@ export function BlobSimulation() {
 
   // Calculate restricted area params based on state
   const calculateRestrictedAreaParams = (canvasWidth: number, canvasHeight: number): RestrictedAreaParams | undefined => {
-    const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin, restrictedAreaX, restrictedAreaY, fontFamily } = simulationParams;
+    const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin, fontFamily, restrictedAreaX, restrictedAreaY } = simulationParams;
     if (!restrictedAreaEnabled) return undefined;
-    // Do NOT use baseline for restricted area box, only for letter drawing
-    const x = restrictedAreaX !== undefined ? restrictedAreaX : (canvasWidth / 2 - restrictedAreaSize / 2);
-    const y = restrictedAreaY !== undefined ? restrictedAreaY : (canvasHeight / 2 - restrictedAreaSize / 2);
+    // Use override if set, otherwise center
+    const x = (typeof restrictedAreaX === 'number') ? restrictedAreaX : (canvasWidth / 2) - (restrictedAreaSize / 2);
+    const y = (typeof restrictedAreaY === 'number') ? restrictedAreaY : (canvasHeight / 2) - (restrictedAreaSize / 2);
     return {
       x,
       y,
       size: restrictedAreaSize,
       margin: restrictedAreaMargin,
       letter: restrictedAreaLetter,
-      fontFamily // <-- Add fontFamily to params
+      fontFamily,
     };
   };
 
@@ -222,6 +222,29 @@ export function BlobSimulation() {
       draw();
     }
   }, [simulationParams.restrictedAreaX, simulationParams.restrictedAreaY, isAnimating, isInitialized, isMounted]);
+
+  // --- Arrow key controls for restricted area movement ---
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only move if restricted area is enabled
+      if (!simulationParams.restrictedAreaEnabled) return;
+      const step = event.shiftKey ? 8 : 1;
+      let dx = 0, dy = 0;
+      if (event.key === 'ArrowLeft') dx = -step;
+      else if (event.key === 'ArrowRight') dx = step;
+      else if (event.key === 'ArrowUp') dy = -step;
+      else if (event.key === 'ArrowDown') dy = step;
+      else return;
+      event.preventDefault();
+      setSimulationParams(prev => ({
+        ...prev,
+        restrictedAreaX: (typeof prev.restrictedAreaX === 'number' ? prev.restrictedAreaX : (512 / 2 - prev.restrictedAreaSize / 2)) + dx,
+        restrictedAreaY: (typeof prev.restrictedAreaY === 'number' ? prev.restrictedAreaY : (512 / 2 - prev.restrictedAreaSize / 2)) + dy,
+      }));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [simulationParams.restrictedAreaEnabled, simulationParams.restrictedAreaSize]);
 
   // --- Core Functions ---
   const initializeSimulation = () => {
@@ -870,7 +893,7 @@ export function BlobSimulation() {
   // If component is not mounted yet, render a placeholder to avoid hydration mismatch
   if (!isMounted) {
     return (
-      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6">
+      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">
         <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
           <div className="w-full h-full rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
             <p className="text-neutral-400">Loading simulation...</p>
@@ -884,7 +907,7 @@ export function BlobSimulation() {
   // --- JSX ---
   return (
     <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
-      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6">
+      <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">
         {/* Canvas Container */}
         <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
           {/* Canvas Element */}
