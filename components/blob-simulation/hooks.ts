@@ -4,7 +4,14 @@ import { Blob } from "./blob"
 import * as SimulationUtils from "./utils"
 import { SimulationParams, RestrictedAreaParams } from "./types"
 import { Vector2 } from "three"
+import { logError, logInfo, logWarn } from "@/shared"; // Import logger
 
+/**
+ * Hook to access the simulation parameters context.
+ * Throws an error if used outside of a SimulationParamsContext.Provider.
+ * @returns {object} The simulation parameters context value.
+ * @throws {Error} If the hook is used outside of a SimulationParamsContext.Provider.
+ */
 export function useSimulationParams() {
   const ctx = useContext(SimulationParamsContext)
   if (!ctx) throw new Error("useSimulationParams must be used within SimulationParamsContext.Provider")
@@ -12,230 +19,38 @@ export function useSimulationParams() {
 }
 
 /**
- * Utility hook for memoizing expensive letter area calculations
- * 
- * @param restrictedAreaParams - Parameters defining the restricted area
- * @param letterDisplayColor - Current theme-appropriate letter color
- * @param canvasSize - Size of the canvas
- * @returns Memoized letter area and position information
+ * Core function that calculates letter area information based on restricted area parameters.
+ * This function performs canvas operations to determine the pixel area covered by the letter.
+ * Used internally by `useLetterAreaCalculation` and `initializeBlobs`.
+ *
+ * @param {RestrictedAreaParams | undefined} restrictedAreaParams - Parameters defining the restricted area (letter, size, position, font).
+ * @param {string} letterDisplayColor - The color used to draw the letter for area calculation.
+ * @param {number} canvasSize - The size (width and height) of the canvas.
+ * @returns {{
+ *   letterArea: number,
+ *   totalArea: number,
+ *   letterAreaRatio: number,
+ *   letterCenterX: number,
+ *   letterCenterY: number,
+ * }} An object containing calculated area information:
+ *    - `letterArea`: The calculated pixel area covered by the letter.
+ *    - `totalArea`: The total pixel area of the canvas.
+ *    - `letterAreaRatio`: The ratio of the letter area to the total canvas area.
+ *    - `letterCenterX`: The x-coordinate of the center of the letter area.
+ *    - `letterCenterY`: The y-coordinate of the center of the letter area.
+ * Returns default zero values if restricted area is not defined or canvas operations fail.
  */
-export function useLetterAreaCalculation(
+function calculateLetterAreaCore(
   restrictedAreaParams: RestrictedAreaParams | undefined,
   letterDisplayColor: string,
   canvasSize: number
-) {
-  return useMemo(() => {
-    // Default values if we don't have a restricted area
-    const result = {
-      letterArea: 0,
-      totalArea: 0,
-      letterAreaRatio: 0,
-      letterCenterX: 0,
-      letterCenterY: 0,
-    };
-    
-    if (!restrictedAreaParams?.letter) return result;
-    
-    try {
-      // Create temporary canvas for area calculation
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = canvasSize;
-      tempCanvas.height = canvasSize;
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) return result;
-
-      // Calculate area covered by the letter
-      const totalArea = canvasSize * canvasSize;
-      
-      const letterCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
-      const letterCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
-      
-      // Draw letter temporarily to calculate its area
-      tempCtx.fillStyle = letterDisplayColor;
-      tempCtx.clearRect(0, 0, canvasSize, canvasSize);
-      SimulationUtils.drawLetter(
-        tempCtx, 
-        restrictedAreaParams.letter, 
-        letterCenterX, 
-        letterCenterY, 
-        restrictedAreaParams.size, 
-        letterDisplayColor, 
-        restrictedAreaParams.fontFamily
-      );
-      
-      // Count letter pixels from temp canvas
-      const imageData = tempCtx.getImageData(0, 0, canvasSize, canvasSize);
-      const pixels = imageData.data;
-      let letterPixels = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] > 0 || pixels[i + 1] > 0 || pixels[i + 2] > 0) {
-          letterPixels++;
-        }
-      }
-      
-      const letterArea = (letterPixels / totalArea) * totalArea;
-      const letterAreaRatio = letterArea / totalArea;
-      
-      // Clean up temporary canvas
-      tempCanvas.width = 1;
-      tempCanvas.height = 1;
-      
-      return {
-        letterArea,
-        totalArea,
-        letterAreaRatio,
-        letterCenterX,
-        letterCenterY,
-      };
-    } catch (error) {
-      console.error("Error calculating letter area:", error);
-      return result;
-    }
-  }, [
-    restrictedAreaParams?.letter,
-    restrictedAreaParams?.x,
-    restrictedAreaParams?.y,
-    restrictedAreaParams?.size,
-    restrictedAreaParams?.fontFamily,
-    letterDisplayColor,
-    canvasSize
-  ]);
-}
-
-/**
- * Creates a new array of blobs based on the provided parameters and constraints
- * 
- * @param ctx - Canvas 2D rendering context
- * @param params - Simulation parameters
- * @param canvasSize - Canvas dimensions
- * @param restrictedAreaParams - Parameters for the restricted area
- * @param letterDisplayColor - Color of the letter in the current theme
- * @returns Array of initialized Blob objects
- */
-export function initializeBlobs(
-  ctx: CanvasRenderingContext2D,
-  params: SimulationParams,
-  canvasSize: number,
-  restrictedAreaParams: RestrictedAreaParams | undefined,
-  letterDisplayColor: string
-): Blob[] {
-  const {
-    shapeCount,
-    edgePointCount,
-    minBlobSize,
-    repelDistance,
-    containerMargin,
-    fontFamily
-  } = params;
-  
-  const blobs: Blob[] = [];
-  
-  // Use memoized letter area calculation - simulating the hook's behavior
-  const {
-    letterArea,
-    totalArea,
-    letterAreaRatio,
-    letterCenterX,
-    letterCenterY,
-  } = calculateLetterArea(restrictedAreaParams, letterDisplayColor, canvasSize);
-  
-  // Calculate blob counts
-  const outsideArea = totalArea - letterArea;
-  const insideShapeCount = Math.round(shapeCount * letterAreaRatio);
-  const outsideShapeCount = shapeCount - insideShapeCount;
-  
-  // Create points for blobs outside the letter
-  for (let i = 0; i < outsideShapeCount; i++) {
-    let x, y;
-    let attempts = 0;
-    const maxAttempts = 50;
-
-    do {
-      x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-      y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-      attempts++;
-
-      // Check if point is outside letter and not too close to other blobs
-      const isValidPosition = restrictedAreaParams?.letter ? 
-        !SimulationUtils.isPointInLetter(
-          ctx, 
-          restrictedAreaParams.letter, 
-          letterCenterX, 
-          letterCenterY, 
-          restrictedAreaParams.size, 
-          x, 
-          y, 
-          letterDisplayColor, 
-          fontFamily
-        ) : true;
-
-      if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobs, minBlobSize, repelDistance)) {
-        blobs.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
-        break;
-      }
-    } while (attempts < maxAttempts);
-  }
-
-  // Create points for blobs inside the letter
-  if (restrictedAreaParams?.letter && insideShapeCount > 0) {
-    for (let i = 0; i < insideShapeCount; i++) {
-      let x, y;
-      let attempts = 0;
-      const maxAttempts = 50;
-
-      do {
-        x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-        y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-        attempts++;
-
-        const isValidPosition = SimulationUtils.isPointInLetter(
-          ctx, 
-          restrictedAreaParams.letter, 
-          letterCenterX, 
-          letterCenterY, 
-          restrictedAreaParams.size, 
-          x, 
-          y, 
-          letterDisplayColor, 
-          fontFamily
-        );
-
-        if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobs, minBlobSize, repelDistance)) {
-          blobs.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
-          break;
-        }
-      } while (attempts < maxAttempts);
-    }
-  }
-
-  // Remove any blobs that are in the restricted area after distribution
-  if (restrictedAreaParams?.letter) {
-    return blobs.filter(blob => {
-      return !SimulationUtils.isPointInLetter(
-        ctx,
-        restrictedAreaParams.letter!,
-        letterCenterX,
-        letterCenterY,
-        restrictedAreaParams.size,
-        blob.centre.x,
-        blob.centre.y,
-        letterDisplayColor,
-        fontFamily
-      );
-    });
-  }
-
-  return blobs;
-}
-
-/**
- * Non-hook version of the letter area calculation for use in the utility function
- */
-function calculateLetterArea(
-  restrictedAreaParams: RestrictedAreaParams | undefined,
-  letterDisplayColor: string,
-  canvasSize: number
-) {
+): {
+  letterArea: number;
+  totalArea: number;
+  letterAreaRatio: number;
+  letterCenterX: number;
+  letterCenterY: number;
+} {
   // Default values if we don't have a restricted area
   const result = {
     letterArea: 0,
@@ -244,8 +59,14 @@ function calculateLetterArea(
     letterCenterX: 0,
     letterCenterY: 0,
   };
-  
+
   if (!restrictedAreaParams?.letter) return result;
+  
+  // Check if we're in a browser environment
+  if (typeof document === 'undefined') {
+    logInfo('Running on server, skipping canvas operations', undefined, 'calculateLetterAreaCore'); // Replaced console.log
+    return result;
+  }
   
   try {
     // Create temporary canvas for area calculation
@@ -254,10 +75,9 @@ function calculateLetterArea(
     tempCanvas.height = canvasSize;
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return result;
-
+    
     // Calculate area covered by the letter
     const totalArea = canvasSize * canvasSize;
-    
     const letterCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
     const letterCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
     
@@ -299,27 +119,203 @@ function calculateLetterArea(
       letterCenterY,
     };
   } catch (error) {
-    console.error("Error calculating letter area:", error);
+    logError("Error calculating letter area:", error, "calculateLetterAreaCore"); // Replaced console.error
     return result;
   }
 }
 
 /**
- * Custom hook to manage the animation frame and simulation state logic
- * 
- * This hook encapsulates all animation-related state and logic, including:
- * - Animation frame management
- * - FPS control and adaptive performance
- * - Animation state (running/paused)
- * - Blob physics updates
- * 
- * @param params - Current simulation parameters
- * @param blobsRef - Reference to the array of blobs
- * @param canvasRef - Reference to the canvas element
- * @param draw - Function to draw the current state
- * @param calculateRestrictedAreaParams - Function to calculate restricted area parameters
- * @param currentTheme - Current theme ("light" or "dark")
- * @returns Animation state and control functions
+ * Utility hook for memoizing expensive letter area calculations.
+ * Avoids recalculating letter area information on every render unless relevant parameters change.
+ *
+ * @param {RestrictedAreaParams | undefined} restrictedAreaParams - Parameters defining the restricted area (letter, size, position, font).
+ * @param {string} letterDisplayColor - Current theme-appropriate letter color used for calculation.
+ * @param {number} canvasSize - Size of the canvas.
+ * @returns {object} Memoized letter area and position information, same structure as `calculateLetterAreaCore` return value.
+ */
+export function useLetterAreaCalculation(
+  restrictedAreaParams: RestrictedAreaParams | undefined,
+  letterDisplayColor: string,
+  canvasSize: number
+) {
+  return useMemo(() => {
+    return calculateLetterAreaCore(restrictedAreaParams, letterDisplayColor, canvasSize);
+  }, [
+    restrictedAreaParams?.letter,
+    restrictedAreaParams?.x,
+    restrictedAreaParams?.y,
+    restrictedAreaParams?.size,
+    restrictedAreaParams?.fontFamily,
+    letterDisplayColor,
+    canvasSize,
+  ]);
+}
+
+/**
+ * Creates a new array of initialized Blob objects based on simulation parameters and constraints.
+ * Handles placement logic, including distributing blobs inside/outside a restricted letter area
+ * and avoiding initial overlaps.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas 2D rendering context, used for checking points within the letter.
+ * @param {SimulationParams} params - Simulation parameters (shape count, sizes, margins, etc.).
+ * @param {number} canvasSize - Canvas dimensions (width and height).
+ * @param {RestrictedAreaParams | undefined} restrictedAreaParams - Parameters for the restricted area, if enabled.
+ * @param {string} letterDisplayColor - Color used for checking points within the letter.
+ * @returns {Blob[]} An array of initialized Blob objects.
+ */
+export function initializeBlobs(
+  ctx: CanvasRenderingContext2D,
+  params: SimulationParams,
+  canvasSize: number,
+  restrictedAreaParams: RestrictedAreaParams | undefined,
+  letterDisplayColor: string
+): Blob[] {
+  const {
+    shapeCount,
+    edgePointCount,
+    minBlobSize,
+    repelDistance,
+    containerMargin,
+    fontFamily
+  } = params;
+  const blobs: Blob[] = [];
+  // Use memoized letter area calculation - simulating the hook's behavior
+  const {
+    letterArea,
+    totalArea,
+    letterAreaRatio,
+    letterCenterX,
+    letterCenterY,
+  } = calculateLetterArea(restrictedAreaParams, letterDisplayColor, canvasSize);
+  // Calculate blob counts
+  const outsideArea = totalArea - letterArea;
+  const insideShapeCount = Math.round(shapeCount * letterAreaRatio);
+  const outsideShapeCount = shapeCount - insideShapeCount;
+  // Create points for blobs outside the letter
+  for (let i = 0; i < outsideShapeCount; i++) {
+    let x, y;
+    let attempts = 0;
+    const maxAttempts = 50;
+  
+    do {
+      x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+      y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+      attempts++;
+      // Check if point is outside letter and not too close to other blobs
+      const isValidPosition = restrictedAreaParams?.letter ? 
+        !SimulationUtils.isPointInLetter(
+          ctx, 
+          restrictedAreaParams.letter, 
+          letterCenterX, 
+          letterCenterY, 
+          restrictedAreaParams.size, 
+          x, 
+          y, 
+          letterDisplayColor, 
+          fontFamily
+        ) : true;
+      if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobs, minBlobSize, repelDistance)) {
+        blobs.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
+        break;
+      }
+    } while (attempts < maxAttempts);
+  }
+  // Create points for blobs inside the letter
+  if (restrictedAreaParams?.letter && insideShapeCount > 0) {
+    for (let i = 0; i < insideShapeCount; i++) {
+      let x, y;
+      let attempts = 0;
+      const maxAttempts = 50;
+      do {
+        x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+        y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
+        attempts++;
+        const isValidPosition = SimulationUtils.isPointInLetter(
+          ctx, 
+          restrictedAreaParams.letter, 
+          letterCenterX, 
+          letterCenterY, 
+          restrictedAreaParams.size, 
+          x, 
+          y, 
+          letterDisplayColor, 
+          fontFamily
+        );
+        if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobs, minBlobSize, repelDistance)) {
+          blobs.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
+          break;
+        }
+      } while (attempts < maxAttempts);
+    }
+  }
+  // Remove any blobs that are in the restricted area after distribution
+  if (restrictedAreaParams?.letter) {
+    return blobs.filter(blob => {
+      return !SimulationUtils.isPointInLetter(
+        ctx,
+        restrictedAreaParams.letter!,
+        letterCenterX,
+        letterCenterY,
+        restrictedAreaParams.size,
+        blob.centre.x,
+        blob.centre.y,
+        letterDisplayColor,
+        fontFamily
+      );
+    });
+  }
+  return blobs;
+}
+
+/**
+ * Non-hook version of the letter area calculation.
+ * Used internally by `initializeBlobs` where hooks cannot be called.
+ * Delegates the actual calculation to `calculateLetterAreaCore`.
+ *
+ * @param {RestrictedAreaParams | undefined} restrictedAreaParams - Parameters defining the restricted area.
+ * @param {string} letterDisplayColor - Color used for calculation.
+ * @param {number} canvasSize - Size of the canvas.
+ * @returns {object} Calculated letter area information, same structure as `calculateLetterAreaCore` return value.
+ */
+function calculateLetterArea(
+  restrictedAreaParams: RestrictedAreaParams | undefined,
+  letterDisplayColor: string,
+  canvasSize: number
+) {
+  return calculateLetterAreaCore(restrictedAreaParams, letterDisplayColor, canvasSize);
+}
+
+/**
+ * Custom hook to manage the animation loop, state, and performance optimization for the blob simulation.
+ *
+ * Encapsulates:
+ * - `requestAnimationFrame` loop management.
+ * - Animation state (running/paused via `isAnimating`).
+ * - Live parameter update indication (`isLiveEditing`).
+ * - Frame timing and adaptive FPS control.
+ * - Triggering physics updates and drawing.
+ *
+ * @param {SimulationParams} params - Current simulation parameters.
+ * @param {React.RefObject<Blob[]>} blobsRef - Reference to the array of Blob objects.
+ * @param {React.RefObject<HTMLCanvasElement>} canvasRef - Reference to the canvas element.
+ * @param {() => void} draw - Function to draw the current simulation state onto the canvas.
+ * @param {(width: number, height: number) => RestrictedAreaParams | undefined} calculateRestrictedAreaParams - Function to get current restricted area parameters.
+ * @param {string} currentTheme - Current theme identifier ("light" or "dark").
+ * @param {boolean} isMounted - Flag indicating if the component is mounted.
+ * @returns {{
+ *   isAnimating: boolean,
+ *   setIsAnimating: React.Dispatch<React.SetStateAction<boolean>>,
+ *   isLiveEditing: boolean,
+ *   toggleAnimation: () => void,
+ *   handleLiveParameterUpdate: (key: string, value: any) => void,
+ *   animationFrameIdRef: React.MutableRefObject<number | null>
+ * }} An object containing animation state and control functions:
+ *    - `isAnimating`: Boolean indicating if the animation loop is active.
+ *    - `setIsAnimating`: Function to directly set the animation state.
+ *    - `isLiveEditing`: Boolean indicating if a parameter is being updated live.
+ *    - `toggleAnimation`: Function to start or stop the animation loop.
+ *    - `handleLiveParameterUpdate`: Function to call when parameters change during animation.
+ *    - `animationFrameIdRef`: Ref holding the current animation frame ID.
  */
 export function useBlobSimulationAnimation(
   params: SimulationParams,
@@ -332,89 +328,54 @@ export function useBlobSimulationAnimation(
 ) {
   // --- Animation State ---
   /**
-   * Whether animation is currently running
-   * Controls whether animation frames are being requested
+   * @type {boolean} isAnimating - Whether animation is currently running. Controls `requestAnimationFrame`.
    */
   const [isAnimating, setIsAnimating] = useState(false);
-  
+
   /**
-   * Whether parameters are currently being updated in real-time
-   * Used to show a visual indicator during live parameter updates
+   * @type {boolean} isLiveEditing - Whether parameters are being updated live. Shows visual indicator.
    */
   const [isLiveEditing, setIsLiveEditing] = useState(false);
-  
+
   /**
-   * Reference to the current animation frame ID
-   * Used to cancel animation frames during cleanup or state changes
+   * @type {React.MutableRefObject<number | null>} animationFrameIdRef - Ref to the current animation frame ID. Used for cancellation.
    */
   const animationFrameIdRef = useRef<number | null>(null);
-  
+
   // --- Performance Optimization ---
   /**
-   * Timestamp of the last animation frame
-   * Used for frame timing and FPS control
+   * @type {React.MutableRefObject<number>} lastFrameTimeRef - Timestamp of the last animation frame. For FPS control.
    */
   const lastFrameTimeRef = useRef<number>(0);
-  
+
   /**
-   * Target frames per second
-   * Adjusts dynamically based on performance
+   * @type {React.MutableRefObject<number>} targetFPSRef - Target frames per second. Adapts based on performance.
    */
   const targetFPSRef = useRef<number>(60);
-  
+
   /**
-   * Minimum time between frames in milliseconds
-   * Derived from targetFPS, but can adapt based on performance
+   * @type {React.MutableRefObject<number>} frameIntervalRef - Minimum time between frames (ms). Derived from targetFPS.
    */
   const frameIntervalRef = useRef<number>(1000 / 60);
 
   /**
    * Animation Lifecycle:
-   * 
-   * 1. Initialization: 
-   *    - Component mounts
-   *    - State initialized with isAnimating = false
-   *    - Canvas and blobs are prepared
-   * 
-   * 2. Animation Start:
-   *    - User clicks play or toggleAnimation is called
-   *    - setIsAnimating(true) is called
-   *    - First animation frame is requested
-   *    - animate function begins executing
-   * 
-   * 3. Animation Loop:
-   *    - Each frame checks timing to maintain consistent FPS
-   *    - Physics updates are applied to all blobs
-   *    - Canvas is redrawn with updated positions
-   *    - Next animation frame is requested
-   * 
-   * 4. Parameter Updates:
-   *    - User changes parameters during animation
-   *    - handleLiveParameterUpdate is called
-   *    - isLiveEditing is set to true temporarily
-   *    - Relevant blob properties are updated immediately
-   *    - Parameters continue to affect simulation in real-time
-   * 
-   * 5. Animation Pause:
-   *    - User clicks pause or toggleAnimation is called again
-   *    - setIsAnimating(false) is called
-   *    - Current animation frame is canceled
-   *    - No more frames are requested until play is clicked again
-   * 
-   * 6. Cleanup:
-   *    - Component unmounts or dependencies change
-   *    - Any active animation frame is canceled
-   *    - Resources are released
+   *
+   * 1. Initialization: Component mounts, state initialized (isAnimating=false).
+   * 2. Animation Start: `toggleAnimation` called -> `isAnimating=true`, first frame requested.
+   * 3. Animation Loop (`animate`):
+   *    - Checks timing for FPS control.
+   *    - Applies physics updates to blobs.
+   *    - Calls `draw` function.
+   *    - Requests next frame.
+   * 4. Parameter Updates: User changes params -> `handleLiveParameterUpdate` called -> `isLiveEditing=true`, relevant blob props updated.
+   * 5. Animation Pause: `toggleAnimation` called -> `isAnimating=false`, current frame canceled.
+   * 6. Cleanup: Component unmounts -> Active frame canceled.
    */
 
   /**
-   * Core animation function - performs physics updates and rendering
-   * 
-   * This is the main animation loop that handles:
-   * 1. Frame timing and FPS control
-   * 2. Physics updates for all blobs
-   * 3. Rendering via the provided draw function
-   * 4. Requesting the next animation frame
+   * Core animation loop function. Handles frame timing, physics updates, and drawing.
+   * @type {() => void}
    */
   const animate = useCallback(() => {
     try {
@@ -423,7 +384,7 @@ export function useBlobSimulationAnimation(
         setIsAnimating(false); 
         return; 
       }
-      
+            
       const ctx = canvasRef.current.getContext("2d");
       if (!ctx) { 
         setIsAnimating(false); 
@@ -460,7 +421,7 @@ export function useBlobSimulationAnimation(
         springTension, containerMargin, isRoundedContainer,
         interactionStrength, maxExpansionFactor,
         gravity, damping, restrictedAreaEnabled,
-        restrictedAreaShape, speed, repelDistance
+        restrictedAreaShape, speed, repelDistance 
       } = params;
       
       // --- Canvas dimensions ---
@@ -489,10 +450,10 @@ export function useBlobSimulationAnimation(
               blob.update(
                 // Only pass nearby blobs for interaction
                 getNearbyBlobs(blob, blobsRef.current), 
-                springTension * timeStep,
-                canvasWidth, canvasHeight, containerMargin, isRoundedContainer,
-                interactionStrength, maxExpansionFactor,
-                gravity, damping,
+                springTension * timeStep, 
+                canvasWidth, canvasHeight, containerMargin, isRoundedContainer, 
+                interactionStrength, maxExpansionFactor, 
+                gravity, damping, 
                 shapeType, shapeParams, ctx
               );
             }
@@ -508,7 +469,7 @@ export function useBlobSimulationAnimation(
       animationFrameIdRef.current = requestAnimationFrame(animate);
     } catch (error) {
       // Error handling - stop animation on error
-      console.error("Error during animation update:", error);
+      logError("Error during animation update:", error, "useBlobSimulationAnimation.animate"); // Replaced console.error
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       setIsAnimating(false);
     }
@@ -522,8 +483,11 @@ export function useBlobSimulationAnimation(
   ]);
 
   /**
-   * Helper function to get only nearby blobs for interaction
-   * This optimization prevents unnecessary calculations for blobs far apart
+   * Helper function to get nearby blobs for interaction optimization.
+   * Filters the full list of blobs to include only those within a calculated interaction range of the target blob.
+   * @param {Blob} blob - The target blob.
+   * @param {Blob[] | null} allBlobs - The complete list of blobs in the simulation.
+   * @returns {Blob[]} An array of blobs considered "nearby" to the target blob.
    */
   const getNearbyBlobs = useCallback((blob: Blob, allBlobs: Blob[] | null): Blob[] => {
     if (!allBlobs) return [];
@@ -542,18 +506,16 @@ export function useBlobSimulationAnimation(
       
       // Calculate maximum range (sum of both blob ranges)
       const maxRange = interactionRange + otherBlob.maxRadius;
-      
+       
       // Return true if within range
       return distSq <= maxRange * maxRange;
     });
   }, []);
 
   /**
-   * Toggle animation state between running and paused
-   * 
-   * State transitions:
-   * - If currently paused -> start animation and request first frame
-   * - If currently running -> cancel current frame and stop animation
+   * Toggles the animation state between running and paused.
+   * Manages starting and stopping the `requestAnimationFrame` loop.
+   * @type {() => void}
    */
   const toggleAnimation = useCallback(() => {
     if (!isMounted) return;
@@ -563,7 +525,7 @@ export function useBlobSimulationAnimation(
       
       if (nextIsAnimating) {
         // Starting animation
-        console.log("Animation starting");
+        logInfo("Animation starting", undefined, "toggleAnimation"); // Replaced console.log
         
         // Cancel any existing animation frame first
         if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
@@ -572,7 +534,7 @@ export function useBlobSimulationAnimation(
         animationFrameIdRef.current = requestAnimationFrame(animate);
       } else {
         // Stopping animation
-        console.log("Animation stopping");
+        logInfo("Animation stopping", undefined, "toggleAnimation"); // Replaced console.log
         
         // Cancel current animation frame
         if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
@@ -584,10 +546,12 @@ export function useBlobSimulationAnimation(
   }, [animate, isMounted]);
 
   /**
-   * Handle live parameter updates
-   * Sets a visual indicator and updates relevant blob properties immediately
-   * 
-   * This maintains a smooth visual transition when parameters change during animation
+   * Handles live updates to simulation parameters while the animation is running.
+   * Sets the `isLiveEditing` flag for visual feedback and applies immediate changes
+   * to relevant blob properties (e.g., `repelDistance`). Clears letter cache if color changes.
+   * @param {string} key - The parameter key being updated.
+   * @param {any} value - The new value of the parameter.
+   * @type {(key: string, value: any) => void}
    */
   const handleLiveParameterUpdate = useCallback((key: string, value: any) => {
     // Only process if animation is running
@@ -614,10 +578,8 @@ export function useBlobSimulationAnimation(
   }, [isAnimating, blobsRef]);
 
   /**
-   * Cleanup animation when component unmounts or dependencies change
-   * 
-   * This ensures we don't leave any animation frames running when they're no longer needed,
-   * preventing memory leaks and unnecessary CPU usage
+   * Effect hook for cleaning up the animation frame when the component unmounts
+   * or when dependencies change, preventing memory leaks.
    */
   useEffect(() => {
     return () => {
@@ -630,28 +592,22 @@ export function useBlobSimulationAnimation(
 
   return {
     isAnimating,
-    setIsAnimating, // Explicitly expose setIsAnimating for external use
+    setIsAnimating, // Explicitly expose setIsAnimating
     isLiveEditing,
     toggleAnimation,
     handleLiveParameterUpdate,
-    // Also return the animationFrameIdRef for direct access if needed
-    animationFrameIdRef
+    animationFrameIdRef // Expose ref for potential external control/monitoring
   };
 }
 
 /**
- * Hook to manage letter shape cache invalidation when font parameters change
- * 
- * This hook ensures the letter shape cache is cleared whenever any of the
- * parameters that affect letter rendering change, such as:
- * - The letter character itself
- * - Font family
- * - Letter color
- * - Letter size
- * 
- * @param {object} params - Current simulation parameters that impact letter rendering
- * @param {string} currentTheme - Current theme ('light' or 'dark')
- * @returns {void} 
+ * Hook to manage the invalidation of the letter shape cache (`SimulationUtils.letterShapeCache`).
+ * It monitors relevant simulation parameters (letter, font family, color, size) and clears the cache
+ * whenever any of these parameters change, ensuring that subsequent letter rendering uses fresh data.
+ *
+ * @param {Pick<SimulationParams, 'restrictedAreaLetter' | 'fontFamily' | 'letterColor' | 'darkLetterColor' | 'restrictedAreaSize'>} params - An object containing the specific simulation parameters that affect letter rendering.
+ * @param {string} currentTheme - The current theme identifier ("light" or "dark"), used to select the correct letter color.
+ * @returns {void} This hook does not return a value; its purpose is to trigger a side effect (cache clearing).
  */
 export function useLetterCacheInvalidation(
   params: Pick<SimulationParams, 'restrictedAreaLetter' | 'fontFamily' | 'letterColor' | 'darkLetterColor' | 'restrictedAreaSize'>,
@@ -678,11 +634,12 @@ export function useLetterCacheInvalidation(
     import('@/shared/font-utils').then(({ clearLetterCache }) => {
       // Clear the letter shape cache when parameters change
       clearLetterCache(SimulationUtils.letterShapeCache);
+      // Using console.debug here intentionally as it's less critical than info/warn/error
       console.debug('Letter shape cache cleared due to parameter change:', cacheKey);
     });
   }, [
-    cacheKey.letter, 
-    cacheKey.fontFamily, 
+    cacheKey.letter,
+    cacheKey.fontFamily,
     cacheKey.letterColor,
     cacheKey.size
   ]);

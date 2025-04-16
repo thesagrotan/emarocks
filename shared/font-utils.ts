@@ -1,15 +1,18 @@
+import { logWarn } from "./logger"; // Import logger
+
 /**
- * Font utility functions for consistent font formatting and rendering
- * These utilities handle font family formatting, baseline calculations,
- * and other font-related operations used in the blob simulation
+ * Provides utility functions for handling font-related tasks in the simulation,
+ * such as formatting font family names, calculating text metrics for centering,
+ * creating font strings for the Canvas API, managing caches, and checking font availability.
  */
 
 /**
- * Formats a font family name for use in CSS/Canvas contexts
- * Adds quotes around font names with spaces as required by CSS
- * 
- * @param {string} [fontFamily] - The font family name to format, defaults to Arial if not provided
- * @returns {string} Properly formatted font family string
+ * Formats a font family name for safe use in CSS font properties or Canvas `ctx.font`.
+ * Ensures that font names containing spaces are enclosed in double quotes.
+ * Defaults to "Arial" if no font family is provided or if the input is empty.
+ *
+ * @param {string} [fontFamily] - The font family name (e.g., "Arial", "Times New Roman").
+ * @returns {string} The formatted font family name, quoted if necessary (e.g., "Arial", "\"Times New Roman\"").
  */
 export function formatFontFamily(fontFamily?: string): string {
   if (!fontFamily) return "Arial";
@@ -17,16 +20,17 @@ export function formatFontFamily(fontFamily?: string): string {
 }
 
 /**
- * Calculates the visual baseline offset for centering a letter within a canvas.
- * This is critical for proper vertical text alignment in canvas rendering.
+ * Calculates the visual vertical baseline offset required to center a given letter
+ * within a specific font size and style using the Canvas API's text metrics.
+ * This helps in achieving visually centered text rendering on the canvas.
  *
- * @param {string} letter - The letter to measure
- * @param {number} size - The font size of the letter in pixels
- * @param {string} font - The complete font string (e.g. "bold 24px Arial")
- * @returns {{ 
- *   baseline: number,
- *   metrics?: TextMetrics
- * }} An object containing the baseline offset and optional text metrics
+ * @param {string} letter - The single character to measure.
+ * @param {number} size - The font size in pixels.
+ * @param {string} font - The complete CSS font string (e.g., "bold 32px Arial", "italic 16px \"Times New Roman\"").
+ * @returns {{
+ *   baseline: number; // The calculated vertical offset from the standard baseline for centering.
+ *   metrics?: TextMetrics; // Optional: The raw TextMetrics object returned by the Canvas API.
+ * }} An object containing the baseline offset. Returns { baseline: 0 } if measurement fails.
  */
 export function getLetterVisualBounds(
   letter: string, 
@@ -37,7 +41,7 @@ export function getLetterVisualBounds(
   const ctx = canvas.getContext('2d');
   
   if (!ctx) {
-    console.warn('Canvas 2D context not available for text measurement');
+    logWarn('Canvas 2D context not available for text measurement', undefined, 'getLetterVisualBounds'); // Replaced console.warn
     return { baseline: 0 };
   }
   
@@ -51,7 +55,7 @@ export function getLetterVisualBounds(
     
     return { baseline, metrics };
   } catch (error) {
-    console.warn(`Error measuring text "${letter}" with font "${font}":`, error);
+    logWarn(`Error measuring text "${letter}" with font "${font}":`, error, 'getLetterVisualBounds'); // Replaced console.warn
     return { baseline: 0 };
   } finally {
     // Clean up the temporary canvas element
@@ -61,13 +65,15 @@ export function getLetterVisualBounds(
 }
 
 /**
- * Creates a complete font string for use with Canvas API
- * 
- * @param {number} size - Font size in pixels
- * @param {string} [fontFamily] - Font family name
- * @param {string} [weight] - Font weight (normal, bold, etc.)
- * @param {string} [style] - Font style (normal, italic, etc.)
- * @returns {string} Complete font string for Canvas API
+ * Constructs a complete font string suitable for use with the Canvas `ctx.font` property.
+ * Combines font style, weight, size, and family into a single string.
+ * Uses `formatFontFamily` to ensure the family name is correctly quoted if needed.
+ *
+ * @param {number} size - The desired font size in pixels.
+ * @param {string} [fontFamily] - The font family name. Defaults to "Arial" via `formatFontFamily`.
+ * @param {string} [weight='bold'] - The desired font weight (e.g., 'normal', 'bold', 'lighter'). Defaults to 'bold'.
+ * @param {string} [style='normal'] - The desired font style (e.g., 'normal', 'italic', 'oblique'). Defaults to 'normal'.
+ * @returns {string} A complete font string (e.g., "bold normal 16px Arial", "normal italic 24px \"Times New Roman\"").
  */
 export function createFontString(
   size: number,
@@ -79,9 +85,11 @@ export function createFontString(
 }
 
 /**
- * Clear the letter shape cache when font parameters change
- * 
- * @param {object} cacheMap - The cache Map object to clear
+ * Clears all entries from a given Map object, typically used for clearing caches.
+ * Performs a check to ensure the provided argument is actually a Map before attempting to clear.
+ *
+ * @param {Map<string, any>} cacheMap - The Map object instance to clear.
+ * @returns {void}
  */
 export function clearLetterCache(cacheMap: Map<string, any>): void {
   if (cacheMap && cacheMap instanceof Map) {
@@ -90,10 +98,15 @@ export function clearLetterCache(cacheMap: Map<string, any>): void {
 }
 
 /**
- * Detect if a font is available in the browser
- * 
- * @param {string} fontFamily - The font family to check
- * @returns {boolean} Whether the font is available
+ * Attempts to detect if a given font family is available in the user's browser.
+ * Works by comparing the measured width of a test string rendered with the target font
+ * against the width rendered with a known base font (e.g., sans-serif). If the widths
+ * differ, the target font is assumed to be available.
+ *
+ * **Note:** This method is not foolproof and relies on browser rendering behavior.
+ *
+ * @param {string} fontFamily - The font family name to check for availability.
+ * @returns {boolean} `true` if the font is likely available, `false` otherwise or if detection fails.
  */
 export function isFontAvailable(fontFamily: string): boolean {
   // Base fonts that are almost always available

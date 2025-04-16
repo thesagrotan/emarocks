@@ -8,8 +8,8 @@ import { Vector2 } from "three"
 import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
 import { SimulationParamsContext } from "./blob-simulation/context"
-import { 
-  useLetterAreaCalculation, 
+import {
+  useLetterAreaCalculation,
   initializeBlobs,
   useBlobSimulationAnimation,
   useLetterCacheInvalidation
@@ -18,8 +18,12 @@ import * as SimulationUtils from "./blob-simulation/utils"
 import { SimulationParams, RestrictedAreaParams } from "./blob-simulation/types"
 import { SimulationCanvas, drawSimulation } from "./blob-simulation/SimulationCanvas"
 import { SimulationOverlays } from "./blob-simulation/SimulationOverlays"
+import { logError, logWarn, logInfo } from "@/shared"; // Import logger
 
-// Safely access window properties with a function that only runs client-side
+/**
+ * Safely retrieves the device pixel ratio, returning 1 if `window` is not available (SSR).
+ * @returns {number} The device pixel ratio or 1.
+ */
 const getDevicePixelRatio = () => {
   if (typeof window !== 'undefined') {
     return window.devicePixelRatio || 1;
@@ -27,57 +31,68 @@ const getDevicePixelRatio = () => {
   return 1;
 };
 
+/** Key used for storing simulation settings in localStorage. @type {string} */
 const STORAGE_KEY = 'blob-simulation-settings';
-const CANVAS_SIZE = 512; // Constant for canvas size to avoid magic numbers
+/** Constant size (width and height) for the simulation canvas. @type {number} */
+const CANVAS_SIZE = 512;
 
 /**
- * The main BlobSimulation component
- * 
- * This component manages the blob physics simulation, handling:
- * - Simulation state and lifecycle
- * - User interaction with the canvas
- * - Parameter controls and real-time updates
- * - Visual rendering of blobs and letter shapes
+ * The main component for the Blob Simulation application.
+ *
+ * Manages the overall simulation state, including:
+ * - Simulation parameters (`simulationParams`) and their persistence.
+ * - Canvas setup and rendering (`canvasRef`, `draw`).
+ * - Blob objects (`blobsRef`) and their initialization/updates.
+ * - Animation loop control (via `useBlobSimulationAnimation`).
+ * - User interactions (parameter changes, canvas clicks, SVG download).
+ * - Theme integration for colors.
+ * - Restricted area definition and handling.
+ *
+ * It orchestrates interactions between the simulation logic, UI controls, and canvas rendering.
  */
 export function BlobSimulation() {
   // --- Core Refs and State ---
   /**
-   * Reference to the canvas HTML element
-   * Used for drawing and interaction handling
+   * Reference to the HTML canvas element used for rendering the simulation.
+   * @type {React.RefObject<HTMLCanvasElement>}
    */
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
   /**
-   * Reference to the array of blob objects
-   * Using a ref instead of state to avoid re-renders on blob updates
-   * while allowing direct mutation during animation frames
+   * Reference to the array containing all active Blob objects in the simulation.
+   * Using a ref allows direct mutation during the animation loop without triggering re-renders.
+   * @type {React.RefObject<Blob[]>}
    */
   const blobsRef = useRef<Blob[]>([]);
-  
+
   /**
-   * Whether the simulation has been fully initialized
-   * Used to prevent certain effects from running prematurely
+   * State flag indicating whether the simulation has completed its initial setup.
+   * Prevents certain effects from running before the canvas and blobs are ready.
+   * @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]}
    */
   const [isInitialized, setIsInitialized] = useState(false);
-  
+
   /**
-   * Whether the component is mounted in the DOM
-   * Used to safely handle browser APIs and prevent memory leaks
+   * State flag indicating whether the component is currently mounted in the DOM.
+   * Used for safe interaction with browser APIs (like `window`, `localStorage`) and cleanup.
+   * @type {[boolean, React.Dispatch<React.SetStateAction<boolean>>]}
    */
   const [isMounted, setIsMounted] = useState(false);
 
   // --- Theme ---
   /**
-   * Current theme state from next-themes
-   * Used to apply appropriate colors based on theme
+   * Theme information from `next-themes`. Includes the current theme ('light', 'dark')
+   * and the resolved theme (guaranteed to be 'light' or 'dark').
    */
   const { theme, resolvedTheme } = useTheme();
+  /** The currently active theme ('light' or 'dark'). @type {string} */
   const currentTheme = resolvedTheme || theme || "light";
 
   // --- Simulation Parameters ---
   /**
-   * All simulation parameters in a single state object
-   * Persisted to localStorage for user preferences
+   * State object holding all configurable parameters for the simulation.
+   * Loaded from localStorage on mount, defaults provided if no saved settings exist.
+   * @type {[SimulationParams, React.Dispatch<React.SetStateAction<SimulationParams>>]}
    */
   const [simulationParams, setSimulationParams] = useState<SimulationParams>(() => {
     if (typeof window !== 'undefined') {
@@ -86,7 +101,7 @@ export function BlobSimulation() {
         try {
           return JSON.parse(savedSettings);
         } catch (e) {
-          console.error('Failed to parse saved settings:', e);
+          logError('Failed to parse saved settings:', e, 'BlobSimulation.useState'); // Replaced console.error
         }
       }
     }
@@ -140,7 +155,10 @@ export function BlobSimulation() {
     };
   });
 
-  // Save settings to localStorage whenever they change
+  /**
+   * Effect to save simulation parameters to localStorage whenever they change.
+   * Runs only on the client-side.
+   */
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(simulationParams));
@@ -148,8 +166,12 @@ export function BlobSimulation() {
   }, [simulationParams]);
 
   /**
-   * Calculate restricted area parameters based on current state
-   * This function converts the raw parameters to actual coordinates and size
+   * Calculates the parameters for the restricted area (position, size, letter, font)
+   * based on the current simulation parameters and canvas dimensions.
+   * Centers the area by default if explicit coordinates are not provided.
+   * @param {number} canvasWidth - The width of the canvas.
+   * @param {number} canvasHeight - The height of the canvas.
+   * @returns {RestrictedAreaParams | undefined} The calculated parameters, or undefined if the restricted area is disabled.
    */
   const calculateRestrictedAreaParams = useCallback((canvasWidth: number, canvasHeight: number): RestrictedAreaParams | undefined => {
     const { restrictedAreaEnabled, restrictedAreaSize, restrictedAreaLetter, restrictedAreaMargin, fontFamily, restrictedAreaX, restrictedAreaY } = simulationParams;
@@ -174,8 +196,10 @@ export function BlobSimulation() {
   }, [simulationParams]);
 
   /**
-   * Main draw function that renders the current state to the canvas
-   * Uses the extracted drawSimulation utility
+   * The main drawing function passed to the animation loop and other triggers.
+   * Delegates the actual rendering logic to the `drawSimulation` utility function.
+   * Handles potential errors during drawing and stops animation if an error occurs.
+   * @type {() => void}
    */
   const draw = useCallback(() => {
     try {
@@ -188,18 +212,24 @@ export function BlobSimulation() {
         CANVAS_SIZE
       );
     } catch (error) {
-      console.error("Error during draw cycle:", error);
+      logError("Error during draw cycle:", error, "BlobSimulation.draw"); // Replaced console.error
       setIsAnimating(false);
     }
   }, [simulationParams, currentTheme, calculateRestrictedAreaParams]);
 
-  // Mount detection - crucial for handling browser APIs safely
+  /**
+   * Effect to set the `isMounted` flag to true after the component mounts.
+   * Includes a cleanup function to set it back to false on unmount.
+   */
   useEffect(() => {
     setIsMounted(true);
     return () => setIsMounted(false);
   }, []);
   
-  // --- Use our animation hook for all animation-related state and logic ---
+  /**
+   * Animation control state and functions obtained from the `useBlobSimulationAnimation` hook.
+   * Includes `isAnimating`, `setIsAnimating`, `isLiveEditing`, `toggleAnimation`, `handleLiveParameterUpdate`.
+   */
   const {
     isAnimating,
     setIsAnimating,
@@ -218,8 +248,12 @@ export function BlobSimulation() {
   );
 
   /**
-   * Handle parameter updates from the UI controls
-   * Determines which updates can be applied live vs. requiring restart
+   * Callback function to handle changes to simulation parameters from the UI controls.
+   * Updates the `simulationParams` state and calls `handleLiveParameterUpdate` if the
+   * animation is running and the parameter change doesn't require a full restart.
+   * @param {string} key - The key of the parameter that changed.
+   * @param {any} value - The new value of the parameter.
+   * @type {(key: string, value: any) => void}
    */
   const handleParamChange = useCallback((key: string, value: any) => {
     // Check if this is a structural parameter that requires reinitialization
@@ -238,21 +272,26 @@ export function BlobSimulation() {
   }, [isAnimating, handleLiveParameterUpdate]);
 
   /**
-   * Initialize the simulation
-   * Sets up the canvas, creates blobs, and prepares for animation
+   * Initializes the simulation environment.
+   * - Sets up the canvas dimensions and scaling based on device pixel ratio.
+   * - Clears any existing animation frame.
+   * - Clears the letter shape cache.
+   * - Creates the initial set of Blob objects using `initializeBlobs`.
+   * - Performs an initial draw.
+   * @type {() => void}
    */
   const initializeSimulation = useCallback(() => {
     try {
-      console.log("Initializing simulation...");
+      logInfo("Initializing simulation...", undefined, "initializeSimulation"); // Replaced console.log
       const canvas = canvasRef.current;
       if (!canvas) {
-        console.warn("Canvas ref is not available");
+        logWarn("Canvas ref is not available", undefined, "initializeSimulation"); // Replaced console.warn
         return;
       }
       
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        console.warn("Could not get 2D context from canvas");
+        logWarn("Could not get 2D context from canvas", undefined, "initializeSimulation"); // Replaced console.warn
         return;
       }
 
@@ -291,21 +330,23 @@ export function BlobSimulation() {
         letterDisplayColor
       );
 
-      console.log("Initialization complete.");
+      logInfo("Initialization complete.", undefined, "initializeSimulation"); // Replaced console.log
       draw();
     } catch (error) {
-      console.error("Error in initializeSimulation:", error);
+      logError("Error in initializeSimulation:", error, "initializeSimulation"); // Replaced console.error
     }
   }, [simulationParams, currentTheme, draw, calculateRestrictedAreaParams, animationFrameIdRef]);
 
   /**
-   * Handle restart of the simulation
-   * Clears all blobs and reinitializes the simulation
+   * Handles the restart of the simulation.
+   * Clears the current blobs, redraws an empty canvas, and then re-initializes the simulation.
+   * Uses `requestAnimationFrame` and `setTimeout` to ensure proper visual clearing before re-initialization.
+   * @type {() => void}
    */
   const handleRestart = useCallback(() => {
     if (!isMounted) return;
     
-    console.log("Restarting simulation...");
+    logInfo("Restarting simulation...", undefined, "handleRestart"); // Replaced console.log
     // Clear blobs visually
     blobsRef.current = [];
     // Use requestAnimationFrame for the redraw to avoid race conditions
@@ -323,8 +364,9 @@ export function BlobSimulation() {
   // --- Lifecycle Effects ---
 
   /**
-   * Initialize simulation when component is mounted
-   * This only runs once after initial mount
+   * Effect to perform the initial simulation setup after the component mounts.
+   * Uses a `setTimeout` to ensure the canvas element is fully ready in the DOM.
+   * Sets the `isInitialized` flag upon completion.
    */
   useEffect(() => {
     if (!isMounted) return;
@@ -341,8 +383,8 @@ export function BlobSimulation() {
   }, [isMounted, initializeSimulation]);
 
   /**
-   * Restart simulation when structural parameters change
-   * Only runs when parameters that require recreating blobs are modified
+   * Effect to automatically restart the simulation when structural parameters
+   * (`shapeCount`, `edgePointCount`, `minBlobSize`) change after initialization.
    */
   useEffect(() => {
     if (!isInitialized || !isMounted) return;
@@ -352,13 +394,13 @@ export function BlobSimulation() {
     simulationParams.edgePointCount, 
     simulationParams.minBlobSize, 
     isInitialized, 
-    isMounted,
-    handleRestart
+    isMounted
   ]);
 
   /**
-   * Update visual appearance without restart
-   * Handles changes to visual parameters that don't affect physics
+   * Effect to redraw the simulation when visual parameters (colors, borders, container shape,
+   * restricted area settings) change, but only if the simulation is initialized and mounted.
+   * This avoids a full restart for purely visual updates.
    */
   useEffect(() => {
     if (!isInitialized || !isMounted) return;
@@ -390,8 +432,9 @@ export function BlobSimulation() {
   ]);
 
   /**
-   * Update drawing when restricted area position changes while not animating
-   * Handles manual letter position changes without requiring animation
+   * Effect to redraw the simulation when the restricted area's explicit position
+   * (`restrictedAreaX`, `restrictedAreaY`) changes, but only if the animation is *not* running.
+   * Allows manual positioning updates to be reflected immediately without starting animation.
    */
   useEffect(() => {
     if (!isAnimating && isInitialized && isMounted && (simulationParams.restrictedAreaX !== undefined || simulationParams.restrictedAreaY !== undefined)) {
@@ -400,8 +443,9 @@ export function BlobSimulation() {
   }, [simulationParams.restrictedAreaX, simulationParams.restrictedAreaY, isAnimating, isInitialized, isMounted, draw]);
 
   /**
-   * Handle arrow key controls for restricted area movement
-   * Allows keyboard navigation of the letter position
+   * Effect to handle keyboard arrow key events for moving the restricted area.
+   * Updates `restrictedAreaX` and `restrictedAreaY` in the simulation parameters.
+   * Shift key increases movement step.
    */
   useEffect(() => {
     if (!simulationParams.restrictedAreaEnabled) return;
@@ -443,14 +487,15 @@ export function BlobSimulation() {
   }, [simulationParams.restrictedAreaEnabled, simulationParams.restrictedAreaSize]);
 
   /**
-   * Generate and download an SVG representation of the current simulation state
-   * Creates an SVG file with the same visual appearance as the canvas
+   * Generates and triggers the download of an SVG file representing the current simulation state.
+   * Constructs the SVG content including background, boundaries, blobs (as paths), and the letter shape (as text).
+   * @type {() => void}
    */
   const downloadSVG = useCallback(() => {
     if (!isMounted) return;
     
     try {
-      console.log("Generating SVG...");
+      logInfo("Generating SVG...", undefined, "downloadSVG"); // Replaced console.log
       const { 
         showBorder, containerMargin, isRoundedContainer,
         restrictedAreaEnabled
@@ -511,14 +556,20 @@ export function BlobSimulation() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Error downloading SVG:", error);
-      alert("Failed to download SVG. See console for details.");
+      logError("Error downloading SVG:", error, "downloadSVG"); // Replaced console.error
+      // Consider using a more user-friendly notification instead of alert
+      // alert("Failed to download SVG. See console for details.");
+      logWarn("Failed to download SVG. See console for details.", undefined, "downloadSVG");
     }
   }, [isMounted, simulationParams, currentTheme, calculateRestrictedAreaParams]);
 
   /**
-   * Handle clicks on the canvas for user interaction
-   * Supports adding and removing blobs at click positions
+   * Handles mouse click events on the simulation canvas.
+   * Based on the current `toolMode` ('add' or 'remove'), it either adds a new blob
+   * at the click location or removes blobs whose area contains the click location.
+   * Calculates click coordinates relative to the canvas, accounting for DPI scaling.
+   * @param {React.MouseEvent<HTMLCanvasElement>} event - The mouse click event.
+   * @type {(event: React.MouseEvent<HTMLCanvasElement>) => void}
    */
   const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     try {
@@ -545,7 +596,7 @@ export function BlobSimulation() {
           // Check if click is inside container bounds
           if (x < containerMargin || x > CANVAS_SIZE - containerMargin || 
               y < containerMargin || y > CANVAS_SIZE - containerMargin) {
-            console.warn("Cannot add shape: click is outside the container margin.");
+            logWarn("Cannot add shape: click is outside the container margin.", { x, y }, "handleCanvasClick"); // Replaced console.warn
             return;
           }
 
@@ -570,17 +621,22 @@ export function BlobSimulation() {
           });
           
           if (removedCount > 0) {
-            console.log(`Removed ${removedCount} blob(s) near (${x.toFixed(1)}, ${y.toFixed(1)})`);
+            logInfo(`Removed ${removedCount} blob(s) near (${x.toFixed(1)}, ${y.toFixed(1)})`, undefined, "handleCanvasClick"); // Replaced console.log
             draw();
           }
           break;
       }
     } catch (error) {
-      console.error("Error handling canvas click:", error);
+      logError("Error handling canvas click:", error, "handleCanvasClick"); // Replaced console.error
     }
   }, [simulationParams, draw]);
 
-  // Handle tool mode changes
+  /**
+   * Handles changes to the active tool mode ('add', 'remove', or null).
+   * Toggles the mode off if the same mode is selected again.
+   * @param {'add' | 'remove' | null} mode - The tool mode to activate or null to deactivate.
+   * @type {(mode: 'add' | 'remove' | null) => void}
+   */
   const handleSetToolMode = (mode: 'add' | 'remove' | null) => {
     setSimulationParams(prev => ({ 
       ...prev, 
@@ -588,20 +644,21 @@ export function BlobSimulation() {
     }));
   };
 
-  // Letter area calculation using our memoized hook
+  /** Memoized calculation of restricted area parameters. @type {RestrictedAreaParams | undefined} */
   const restrictedAreaParams = calculateRestrictedAreaParams(CANVAS_SIZE, CANVAS_SIZE);
+  /** Current theme-appropriate color for the letter. @type {string} */
   const letterDisplayColor = currentTheme === "dark" 
     ? simulationParams.darkLetterColor 
     : simulationParams.letterColor;
   
-  // Use letter area calculation for analytics/debugging
+  /** Memoized calculation of letter area statistics using `useLetterAreaCalculation`. @type {object} */
   const letterAreaStats = useLetterAreaCalculation(
     restrictedAreaParams,
     letterDisplayColor,
     CANVAS_SIZE
   );
   
-  // Use our cache invalidation hook to keep letter rendering fresh
+  /** Hook call to manage letter shape cache invalidation based on relevant parameter changes. */
   useLetterCacheInvalidation(
     {
       restrictedAreaLetter: simulationParams.restrictedAreaLetter,
@@ -614,7 +671,7 @@ export function BlobSimulation() {
   );
 
   // --- Loading Placeholder ---
-  // If component is not mounted yet, render a placeholder to avoid hydration mismatch
+  // Render placeholder if component is not yet mounted to prevent hydration errors.
   if (!isMounted) {
     return (
       <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">
@@ -628,7 +685,7 @@ export function BlobSimulation() {
     );
   }
 
-  // --- JSX ---
+  // --- Render ---
   return (
     <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
       <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">

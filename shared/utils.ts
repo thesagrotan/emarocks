@@ -1,11 +1,13 @@
-import { SimulationParams } from "@/components/blob-simulation/types"; 
+import { SimulationParams } from "@/components/blob-simulation/types";
+import { logWarn } from "./logger"; // Import logger
 
 /**
- * Converts a hexadecimal color code to an RGBA color string.
+ * Converts a hexadecimal color string (3 or 6 digits, with or without #) to an RGBA color string.
+ * Handles invalid input by returning transparent black ('rgba(0,0,0,0)') and logging a warning.
  *
- * @param {string} hex - The hexadecimal color code (e.g., "#FF0000" or "FF0000").
- * @param {number} [alpha=1] - The alpha (opacity) value, ranging from 0 to 1.
- * @returns {string} The RGBA color string (e.g., "rgba(255, 0, 0, 1)").
+ * @param {string} hex - The hexadecimal color string (e.g., "#FF0000", "f00", "ff0000").
+ * @param {number} [alpha=1] - The alpha (opacity) value, ranging from 0 (transparent) to 1 (opaque). Defaults to 1.
+ * @returns {string} The corresponding RGBA color string (e.g., "rgba(255, 0, 0, 1)"). Returns 'rgba(0,0,0,0)' for invalid input.
  */
 export function hexToRgba(hex: string, alpha: number = 1): string {
   if (!hex) return 'rgba(0,0,0,0)'; // Handle empty or null input
@@ -23,7 +25,7 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
     
     // Validate hex format
     if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
-      console.warn(`Invalid hex color provided to hexToRgba: ${hex}`);
+      logWarn(`Invalid hex color provided to hexToRgba: ${hex}`, undefined, "hexToRgba"); // Replaced console.warn
       return 'rgba(0,0,0,0)';
     }
     
@@ -31,7 +33,7 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
     const bigint = parseInt(hex, 16);
     
     if (isNaN(bigint)) {
-      console.warn(`Could not parse hex color: ${hex}`);
+      logWarn(`Could not parse hex color: ${hex}`, undefined, "hexToRgba"); // Replaced console.warn
       return 'rgba(0,0,0,0)';
     }
     
@@ -40,27 +42,30 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
     const b = bigint & 255;
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   } catch (error) {
-    console.warn(`Error in hexToRgba for ${hex}: ${error}`);
+    logWarn(`Error in hexToRgba for ${hex}: ${error}`, undefined, "hexToRgba"); // Replaced console.warn
     return 'rgba(0,0,0,0)';
   }
 }
 
 /**
- * Generates a set of well-distributed random points using Poisson Disk Sampling.
- * This algorithm ensures that no two points are closer than a specified minimum distance.
+ * Generates a set of points distributed pseudo-randomly using the Poisson Disk Sampling algorithm.
+ * Ensures that no two points are closer than the specified minimum distance (`minDist`).
+ * Can optionally avoid placing points within a defined rectangular restricted area.
  *
- * @param {number} width - The width of the area to generate points in.
- * @param {number} height - The height of the area to generate points in.
- * @param {number} minDist - The minimum distance between any two points.
- * @param {number} [k=30] - The number of attempts to find a valid point around a given sample.
- * @param {number} [maxPoints] - The maximum number of points to generate.
- * @param {object} [restrictedArea] - An optional restricted area object, in which no points will be generated.
+ * **Note:** The current implementation is a placeholder and needs the actual algorithm logic.
+ *
+ * @param {number} width - The width of the area for point generation.
+ * @param {number} height - The height of the area for point generation.
+ * @param {number} minDist - The minimum required distance between any two generated points.
+ * @param {number} [k=30] - The number of candidate points to generate around an active point before rejecting it. Higher values increase density but slow down generation.
+ * @param {number} [maxPoints] - An optional upper limit on the number of points to generate.
+ * @param {object} [restrictedArea] - An optional rectangular area to exclude points from.
  * @param {number} [restrictedArea.x] - The x-coordinate of the top-left corner of the restricted area.
  * @param {number} [restrictedArea.y] - The y-coordinate of the top-left corner of the restricted area.
- * @param {number} [restrictedArea.size] - The size (width and height) of the square restricted area.
- * @param {number} [restrictedArea.margin] - The margin around the restricted area where points will also be excluded.
- * @param {number} [minBlobSize] - Minimum size of the blob (not used in this implementation, but kept for compatibility).
- * @returns {Array<[number, number]>} An array of [x, y] coordinate pairs representing the generated points.
+ * @param {number} [restrictedArea.size] - The width and height of the square restricted area.
+ * @param {number} [restrictedArea.margin=0] - An additional margin around the restricted area to exclude points from.
+ * @param {number} [minBlobSize] - (Currently unused in this placeholder) Minimum size of blobs, potentially for future density considerations.
+ * @returns {Array<[number, number]>} An array of [x, y] coordinates representing the generated points. Returns an empty array in this placeholder implementation.
  */
 export function poissonDiskSampling(
   width: number,
@@ -74,15 +79,25 @@ export function poissonDiskSampling(
   
   
   // Placeholder, replace this with actual logic for the function
+  logWarn("poissonDiskSampling function is currently a placeholder and does not generate points.", undefined, "poissonDiskSampling");
   return []
 }
 
 /**
- * Returns simulation colors based on the current theme and parameters
- * 
- * @param {SimulationParams} params - The simulation parameters including color settings
- * @param {string} theme - The current theme ('light' or 'dark')
- * @returns {Object} An object containing all theme-appropriate colors for the simulation
+ * Determines the appropriate colors for various simulation elements based on the current theme ('light' or 'dark')
+ * and the provided simulation parameters. Consolidates color selection logic.
+ *
+ * @param {SimulationParams} params - The object containing all simulation parameters, including color settings for both themes.
+ * @param {string} theme - The current theme identifier, expected to be 'light' or 'dark'.
+ * @returns {{
+ *   backgroundColor: string;
+ *   blobFill: string; // RGBA format, includes opacity
+ *   blobBorder: string;
+ *   letterColor: string;
+ *   borderColor: string; // Color for the container border
+ *   themeToggleBg: string;
+ *   themeToggleIcon: string;
+ * }} An object containing the calculated color values for the current theme.
  */
 export function getSimulationColors(
   params: SimulationParams,
