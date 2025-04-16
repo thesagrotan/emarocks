@@ -46,10 +46,18 @@
 - Section 3 is complete
 
 ## 4. Improve State and Animation Management
-- [ ] Move animation frame and simulation state logic into a custom React hook (e.g., `useBlobSimulationAnimation`).
-- [ ] Simplify and document all state variables, ensuring each has a clear purpose and is not duplicated.
-- [ ] Remove any duplicated or unnecessary state logic from the main component.
-- [ ] Add comments explaining the animation lifecycle and state transitions.
+- [x] Move animation frame and simulation state logic into a custom React hook (e.g., `useBlobSimulationAnimation`).
+- [x] Simplify and document all state variables, ensuring each has a clear purpose and is not duplicated.
+- [x] Remove any duplicated or unnecessary state logic from the main component.
+- [x] Add comments explaining the animation lifecycle and state transitions.
+
+**Notes:**
+- Created `useBlobSimulationAnimation` hook in `blob-simulation/hooks.ts` that encapsulates all animation-related logic
+- Added comprehensive documentation for all state variables in both the hook and main component
+- Removed duplicated and unnecessary state logic from the main `BlobSimulation` component
+- Added detailed comments explaining the animation lifecycle (init, start, loop, pause, parameter updates, cleanup)
+- Improved performance using adaptive FPS control and spatial optimization for blob interactions
+- Section 4 is complete
 
 ## 5. Component Decomposition
 - [ ] Split the main simulation component into smaller presentational components:
@@ -105,3 +113,19 @@ The blob colors were not updating dynamically when changed through the simulatio
 *   **Opacity Edge Cases:** Thoroughly test edge cases for opacity, such as very low or high opacity values, to ensure rendering is consistent.
 *   **Performance Optimization:** Profile the simulation with various color changes to identify and address any performance bottlenecks, especially when many blobs are present.
 *   **Color Spaces:** Consider if other color spaces (e.g., HSL) might be more suitable for dynamic color manipulation and blending in the simulation.
+
+# Next Steps for Developers
+
+Section 4 of the refactoring tasks has been completed, with significant improvements to the animation and state management of the blob simulation. The most important changes include:
+
+1. **Custom Animation Hook**: Created `useBlobSimulationAnimation` hook that encapsulates all animation-related logic, making the main component cleaner and more maintainable.
+
+2. **Improved State Variables**: Each state variable now has clear documentation of its purpose, making it easier for future developers to understand the codebase.
+
+3. **Optimized Animation Loop**: The animation loop now includes adaptive FPS control and spatial optimization to improve performance.
+
+4. **Clear Animation Lifecycle**: Added detailed documentation of the animation lifecycle from initialization to cleanup.
+
+The codebase is now ready for the next phase of refactoring (Section 5: Component Decomposition), which involves breaking the main simulation component into smaller, more focused components. This will further improve maintainability and make it easier to test individual parts of the simulation.
+
+Please review the changes and continue with the remaining tasks in the checklist. Feel free to reach out if you have any questions about the animation and state management improvements implemented so far.
