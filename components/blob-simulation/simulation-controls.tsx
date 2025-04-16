@@ -226,7 +226,7 @@ export function SimulationControls({
             <Slider 
               id="edgePointCount" 
               min={3} 
-              max={32} 
+              max={64} 
               step={1} 
               value={[params.edgePointCount]} 
               onValueChange={(val) => onParamChange('edgePointCount', val[0])}
