@@ -110,6 +110,9 @@ importers:
       embla-carousel-react:
         specifier: 8.5.1
         version: 8.5.1(react@19.1.0)
+      ggpush:
+        specifier: ^1.0.4
+        version: 1.0.4
       input-otp:
         specifier: 1.4.1
         version: 1.4.1(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -1345,6 +1348,16 @@ packages:
   get-nonce@1.0.1:
     resolution: {integrity: sha512-FJhYRoDaiatfEkUK8HKlicmu/3SGFD51q3itKDGoSTysQJBnfOcxU5GxnhE1E6soB76MbT0MBtnKJuXyAx+96Q==}
     engines: {node: '>=6'}
+
+  ggpush@1.0.4:
+    resolution: {integrity: sha512-gkuhEZnuVrFWEqH4Q01jCoR9mqcmfdi3twluFGw4R0MurnVXCqoyOwZ7DWmami8TecA4HlkLsQuOl8SZIEIsAQ==}
+    engines: {node: '>=0.10.0'}
+    hasBin: true
+
+  git-current-branch@1.0.3:
+    resolution: {integrity: sha512-tfLkAlp3P07eWeMX8TS/o3f0EZpIUzFGei0gl3wtRhOBu+w+Lx8dNAXUN8h7EW/Nh5/pVQPH0TO8e2FqIOYSFg==}
+    engines: {node: '>=0.10.0'}
+    hasBin: true
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -3025,6 +3038,12 @@ snapshots:
   function-bind@1.1.2: {}
 
   get-nonce@1.0.1: {}
+
+  ggpush@1.0.4:
+    dependencies:
+      git-current-branch: 1.0.3
+
+  git-current-branch@1.0.3: {}
 
   glob-parent@5.1.2:
     dependencies:

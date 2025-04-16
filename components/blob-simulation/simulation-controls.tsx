@@ -429,23 +429,26 @@ export function SimulationControls({
                   onValueChange={(val) => onParamChange('restrictedAreaSize', val[0])} 
                 />
               </div>
-              {/* Font Family Input */}
-              <div className="space-y-1">
-                <ParamLabel
-                  htmlFor="fontFamily"
-                  param="fontFamily"
-                >
-                  Letter Font
-                </ParamLabel>                
-                <select
-                  id="fontFamily"
-                  value={params.fontFamily || ''}
-                  onChange={(e) => onParamChange('fontFamily', e.target.value)}
-                  className="w-full border rounded bg-transparent dark:border-neutral-700 px-1 text-sm"
-                >
+               {/* Font Family Input */}
+               <div className="space-y-1">
+                <ParamLabel htmlFor="fontFamily" param="fontFamily">
+                    Letter Font
+                </ParamLabel>
+                <input
+                    type="text"
+                    id="fontFamily"
+                    value={params.fontFamily}
+                    onChange={(e) => onParamChange('fontFamily', e.target.value)}
+                    className="w-full border rounded bg-transparent dark:border-neutral-700 px-1 text-sm"
+                />
+                {/* <select
+                    id="fontFamily"
+                    value={params.fontFamily || ''}
+                    onChange={(e) => onParamChange('fontFamily', e.target.value)}
+                    className="w-full border rounded bg-transparent dark:border-neutral-700 px-1 text-sm"                >
                   {systemFonts.map((font) => (<option key={font} value={font}>{font}</option>))}
                   {systemFonts.length === 0 && (<option value="">Default</option>)}
-                </select>
+                </select> */}
               </div>              
             </>
           )}
