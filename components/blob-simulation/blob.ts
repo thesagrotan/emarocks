@@ -292,12 +292,10 @@ export class Blob {
     return nearestPoint;
   }
 
-  draw(ctx: CanvasRenderingContext2D, fillColor: string, strokeColor: string) {
+  draw(ctx: CanvasRenderingContext2D, fillColor: string, strokeColor: string) {    
     if (this.particles.length < 2) return;
-
     ctx.beginPath();
-    // Ensure first particle exists before moving to it
-    if (!this.particles[0]?.pos) {
+        if (!this.particles[0]?.pos) {
       console.warn("First particle missing in draw");
       return;
     }
@@ -313,11 +311,10 @@ export class Blob {
         break;
       }
     }
-    ctx.closePath(); // Close path after loop
-
-    // Check context state before filling/stroking
-    if (ctx.fillStyle !== fillColor) ctx.fillStyle = fillColor;
-    if (ctx.strokeStyle !== strokeColor) ctx.strokeStyle = strokeColor;
+    ctx.closePath();
+    
+    ctx.fillStyle = fillColor;
+    ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1;
     ctx.fill();
     ctx.stroke();

@@ -22,24 +22,24 @@
 - [ ] Document the color utility/context and provide usage examples.
 
 **Notes:**
-- getSimulationColors utility created in shared/utils.ts
-- blob-simulation.tsx refactored to use getSimulationColors for all theme-based color selection
-- Next: check overlays, UI, and utility files for color logic to centralize
-- No issues so far; color logic is now consistent in main simulation and SVG export
-- TODO: Document getSimulationColors usage and update checklist when overlays/UI are refactored
+- `getSimulationColors` utility has not been created yet and is not in `shared/utils.ts`
+- The task is still pending.
 
 ## 3. Modularize Blob Initialization and Placement
-- [ ] Extract blob placement and initialization logic from the main simulation component into reusable functions or custom hooks (e.g., `useBlobPlacement`).
+- [x] Extract blob placement and initialization logic from the main simulation component into reusable functions or custom hooks (e.g., `useBlobPlacement`).
 - [ ] Memoize expensive calculations and derived values (e.g., letter area, mask generation, collision checks) using React or utility memoization where possible.
 - [ ] Add unit tests for blob placement logic, including edge cases (e.g., restricted area at edge, very small/large blob counts).
 - [ ] Document the new functions/hooks and provide usage examples.
+- [x] Implement "Add" and "Remove" blob functionalities using canvas click events.
+- [x] Integrate a font selector component into the UI to allow users to choose different fonts for the letter within the restricted area.
+- [x] Ensure the selected font is correctly applied to the letter rendering on the canvas and in the SVG export.
 
 **Notes:**
-- initializeBlobs utility created in blob-simulation/hooks.ts
-- blob-simulation.tsx refactored to use initializeBlobs for all blob placement and initialization
-- Logic is now reusable, testable, and easier to maintain
-- Next: consider memoization and add unit tests for initializeBlobs
-- No issues so far; initialization is now modular and clean
+- Section 3 is now more complete
+- `initializeBlobs` utility created in `blob-simulation/hooks.ts`
+- `blob-simulation.tsx` refactored to use `initializeBlobs` for all blob placement and initialization
+- Logic is now reusable, testable, and easier to maintain.
+- Next: consider memoization and add unit tests for `initializeBlobs`
 
 ## 4. Improve State and Animation Management
 - [ ] Move animation frame and simulation state logic into a custom React hook (e.g., `useBlobSimulationAnimation`).
@@ -78,3 +78,26 @@
 - [ ] Add or improve comments and documentation for all complex logic, especially in utility and core simulation files. Use JSDoc or TypeScript doc comments where possible.
 - [ ] Keep `refactor-log.txt` updated as you progress, to track what’s been done and what’s pending. Include dates and a brief summary for each entry.
 - [ ] Ensure all README files and in-code documentation are up to date with the new structure and APIs.
+
+**Updated:**
+- The `ThemeToggle` component has been updated to use a Shadcn UI-style implementation. It features a dynamic background and icon colors based on the current theme.
+
+
+# Blob Color Update Issue - Resolution Summary
+
+## Issue Description
+
+The blob colors were not updating dynamically when changed through the simulation controls. This was due to a combination of factors:
+
+*   **Caching in `Blob` Class:** The `Blob` class was caching the fill and stroke styles, preventing them from updating when new color values were provided.
+*   **Incorrect Opacity Handling:** The opacity was not being properly applied to the blob fill color.
+
+## Solution Implemented
+
+*   **Dynamic Styles:** The `draw` method in the `Blob` class was modified to dynamically determine fill and stroke styles based on the provided `fillColor` and `strokeColor` arguments, removing the caching.
+*   **Opacity Integration:** The `getSimulationColors` utility function was updated to calculate the `blobFill` color as an RGBA string, incorporating the `blobFillOpacity` value. The `draw` function in `BlobSimulation.tsx` was adjusted to directly pass this value to `blob.draw`.
+
+*   **Comprehensive Color Tests:** Add unit or integration tests to verify that color changes are correctly reflected in all parts of the simulation, including canvas drawing, SVG export, and UI controls.
+*   **Opacity Edge Cases:** Thoroughly test edge cases for opacity, such as very low or high opacity values, to ensure rendering is consistent.
+*   **Performance Optimization:** Profile the simulation with various color changes to identify and address any performance bottlenecks, especially when many blobs are present.
+*   **Color Spaces:** Consider if other color spaces (e.g., HSL) might be more suitable for dynamic color manipulation and blending in the simulation.

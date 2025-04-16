@@ -10,10 +10,10 @@ import { useLayoutEffect } from "react"
 // Import refactored components and types
 import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
-import { hexToRgba, poissonDiskSampling } from "@/shared/utils"
+import { getSimulationColors, hexToRgba, poissonDiskSampling } from "@/shared/utils" // Import getSimulationColors
 import { SimulationParamsContext } from "./blob-simulation/context"
 import { useSimulationParams } from "./blob-simulation/hooks"
-import { drawLetter, isPointInLetter, createLetterPath, findOptimalBlobPlacement, isOverlappingOtherBlobs, letterShapeCache, getLetterVisualBounds } from "./blob-simulation/utils"
+import * as SimulationUtils from "./blob-simulation/utils"
 import { SimulationParams, SimulationColors, RestrictedAreaParams } from "./blob-simulation/types"
 
 // Safely access window properties with a function that only runs client-side
@@ -76,12 +76,17 @@ export function BlobSimulation() {
       blobFillColor: "#ffffff",
       blobFillOpacity: 0.3,
       darkBlobFillColor: "#000000",
-      darkBlobFillOpacity: 0.3,
+       darkBlobFillOpacity: 0.3,
       blobBorderColor: "#466e91",
       darkBlobBorderColor: "#77e4cb",
       letterColor: "#000000",
       darkLetterColor: "#FFFFFF",
 
+      // Theme Toggle Button Colors
+      themeToggleBgColorLight: "#6C8C9380",
+      themeToggleBgColorDark: "#6C8C9380",
+      themeToggleIconColorLight: "#04050C",
+      themeToggleIconColorDark: "#F6FEFA",
       // Interaction/Tools
       toolMode: null,
 
@@ -126,7 +131,7 @@ export function BlobSimulation() {
 
       // Clear letter shape cache when color changes
       if (key === 'letterColor' || key === 'darkLetterColor') {
-        letterShapeCache.clear();
+        SimulationUtils.letterShapeCache.clear();
       }
     }
     
@@ -314,7 +319,7 @@ export function BlobSimulation() {
         tempCtx.clearRect(0, 0, canvasSize, canvasSize);
         letterCenterX = pdsRestrictedArea.x + pdsRestrictedArea.size / 2;
         letterCenterY = pdsRestrictedArea.y + pdsRestrictedArea.size / 2;
-        drawLetter(tempCtx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, letterDisplayColor, simulationParams.fontFamily);
+        SimulationUtils.drawLetter(tempCtx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, letterDisplayColor, simulationParams.fontFamily);
         
         // Count letter pixels from temp canvas
         const imageData = tempCtx.getImageData(0, 0, canvasSize, canvasSize);
@@ -350,10 +355,10 @@ export function BlobSimulation() {
 
           // Check if point is outside letter and not too close to other blobs
           const isValidPosition = pdsRestrictedArea?.letter ? 
-            !isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily) :
+            !SimulationUtils.isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily) :
             true;
 
-          if (isValidPosition && !isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
+          if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
             blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
             break;
           }
@@ -372,9 +377,9 @@ export function BlobSimulation() {
             y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
             attempts++;
 
-            const isValidPosition = isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily);
+            const isValidPosition = SimulationUtils.isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily);
 
-            if (isValidPosition && !isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
+            if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
               blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
               break;
             }
@@ -392,7 +397,7 @@ export function BlobSimulation() {
 
         blobsRef.current = blobsRef.current.filter(blob => {
           // Remove any blob whose center is inside the restricted area letter
-          return !isPointInLetter(
+          return !SimulationUtils.isPointInLetter(
             ctx,
             pdsRestrictedArea.letter,
             letterCenterXCheck,
@@ -433,7 +438,7 @@ export function BlobSimulation() {
     // First, check each blob to see if its center or any particles are inside the letter
     blobsRef.current.forEach((blob, blobIndex) => {
       // Quick check if blob center is inside letter
-      const centerInLetter = isPointInLetter(
+      const centerInLetter = SimulationUtils.isPointInLetter(
         ctx,
         restrictedAreaParams.letter!,
         letterCenterX,
@@ -450,7 +455,7 @@ export function BlobSimulation() {
       if (!centerInLetter) {
         // Only check particles if center isn't already in letter
         for (const particle of blob.particles) {
-          if (isPointInLetter(
+          if (SimulationUtils.isPointInLetter(
             ctx,
             restrictedAreaParams.letter!,
             letterCenterX,
@@ -476,7 +481,7 @@ export function BlobSimulation() {
         do {
           newX = containerMargin + Math.random() * (canvasWidth - 2 * containerMargin);
           newY = containerMargin + Math.random() * (canvasHeight - 2 * containerMargin);
-        } while (isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY, letterDisplayColor, restrictedAreaParams.fontFamily));  // Pass the color
+        } while (SimulationUtils.isPointInLetter(ctx, restrictedAreaParams.letter!, letterCenterX, letterCenterY, letterSize, newX, newY, letterDisplayColor, restrictedAreaParams.fontFamily));  // Pass the color
         
         // Make sure the new position is within canvas bounds
         const safeX = Math.max(containerMargin + blob.maxRadius, 
@@ -509,27 +514,10 @@ export function BlobSimulation() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const { 
-        backgroundColor, darkBackgroundColor,
-        blobFillColor, blobFillOpacity,
-        darkBlobFillColor, darkBlobFillOpacity,
-        blobBorderColor, darkBlobBorderColor,
-        letterColor, darkLetterColor,
-        showBorder, containerMargin, isRoundedContainer,
-        restrictedAreaEnabled, restrictedAreaShape
-      } = simulationParams;
+      const { showBorder, containerMargin, isRoundedContainer, restrictedAreaEnabled } = simulationParams;
+      
 
-      const colors: SimulationColors = {
-        bg: currentTheme === "dark" ? darkBackgroundColor : backgroundColor,
-        fg: currentTheme === "dark" ? "#f6fefa" : "#04050c",
-        accent: currentTheme === "dark" ? darkBlobBorderColor : blobBorderColor,
-        fill: currentTheme === "dark" ?
-          hexToRgba(darkBlobFillColor, darkBlobFillOpacity) :
-          hexToRgba(blobFillColor, blobFillOpacity),
-        border: currentTheme === "dark" ? darkBlobBorderColor : blobBorderColor,
-        obstacle: currentTheme === "dark" ? darkLetterColor : letterColor,
-        obstacleText: currentTheme === "dark" ? darkBackgroundColor : backgroundColor
-      };
+      const colors = getSimulationColors(simulationParams, currentTheme);
 
       const dpi = getDevicePixelRatio();
       const canvasWidth = 512;
@@ -538,14 +526,14 @@ export function BlobSimulation() {
       // Reset transform and clear canvas
       ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
       ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-      ctx.fillStyle = colors.bg;
+      ctx.fillStyle = colors.backgroundColor; // Use colors.backgroundColor
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
       // Draw container boundary
       if (showBorder && containerMargin > 0) {
-        ctx.strokeStyle = colors.border;
+        ctx.strokeStyle = colors.borderColor; // Use colors.borderColor
         ctx.lineWidth = 1;
-        if (isRoundedContainer) {
+         if (isRoundedContainer) {
           const radius = (Math.min(canvasWidth, canvasHeight) - containerMargin * 2) / 2;
           const centerX = canvasWidth / 2;
           const centerY = canvasHeight / 2;
@@ -563,24 +551,22 @@ export function BlobSimulation() {
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams) {
         if (restrictedAreaParams.letter) {
-          // Use the theme-appropriate letter color
-          const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
 
           // Get baseline offset for perfect visual centering
           const font = `bold ${restrictedAreaParams.size}px ${simulationParams.fontFamily || "Arial"}`;
-          const { baseline } = getLetterVisualBounds(restrictedAreaParams.letter, restrictedAreaParams.size, font);
+          const { baseline } = SimulationUtils.getLetterVisualBounds(restrictedAreaParams.letter, restrictedAreaParams.size, font);// added the font variable to the call
 
           // Draw only the letter visually centered (no rectangle or background)
           const rectCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
           const rectCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
           const rectSize = restrictedAreaParams.size;
-          drawLetter(
+          SimulationUtils.drawLetter(
             ctx, 
             restrictedAreaParams.letter,
             rectCenterX,
             rectCenterY,
             rectSize, 
-            letterDisplayColor,
+        colors.letterColor, // Use colors.letterColor
             restrictedAreaParams.fontFamily // <-- Pass fontFamily
           );
 
@@ -600,7 +586,8 @@ export function BlobSimulation() {
 
       // Draw blobs AFTER letter so they appear above it visually
       blobsRef.current.forEach((blob) => {
-        if (blob?.draw) blob.draw(ctx, colors.fill, colors.border);
+        if (blob?.draw) blob.draw(ctx, colors.blobFill, colors.blobBorder); 
+
       });
     } catch (error) {
       console.error("Error during draw cycle:", error);
@@ -755,45 +742,33 @@ export function BlobSimulation() {
     try {
       console.log("Generating SVG...");
       const { 
-        backgroundColor, darkBackgroundColor,
-        blobFillColor, blobFillOpacity,
-        darkBlobFillColor, darkBlobFillOpacity,
-        blobBorderColor, darkBlobBorderColor,
-        letterColor, darkLetterColor,
         showBorder, containerMargin, isRoundedContainer,
-        restrictedAreaEnabled, restrictedAreaShape
+        restrictedAreaEnabled
       } = simulationParams;
       
       const canvasWidth = 512;
       const canvasHeight = 512;
+      const colors = getSimulationColors(simulationParams, currentTheme);
 
-      const colors = {
-        bg: currentTheme === "dark" ? darkBackgroundColor : backgroundColor,
-        fill: currentTheme === "dark" ?
-          hexToRgba(darkBlobFillColor, darkBlobFillOpacity) :
-          hexToRgba(blobFillColor, blobFillOpacity),
-        border: currentTheme === "dark" ? darkBlobBorderColor : blobBorderColor,
-        obstacle: currentTheme === "dark" ? darkLetterColor : letterColor,
-      };
-
-      let svgContent = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${colors.bg};">`;
+      let svgContent = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${colors.backgroundColor};">`; // Use colors.backgroundColor
 
       if (showBorder && containerMargin > 0) {
-        const borderAttrs = `fill="none" stroke="${colors.border}" stroke-width="1"`;
+        const borderAttrs = `fill="none" stroke="${colors.borderColor}" stroke-width="1"`; // Use colors.borderColor
         if (isRoundedContainer) {
           const radius = (Math.min(canvasWidth, canvasHeight) - containerMargin * 2) / 2;
           const centerX = canvasWidth / 2;
           const centerY = canvasHeight / 2;
           svgContent += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" ${borderAttrs} />`;
         } else {
-          svgContent += `<rect x="${containerMargin}" y="${containerMargin}" width="${canvasWidth - containerMargin * 2}" height="${canvasHeight - containerMargin * 2}" ${borderAttrs} />`;
+          svgContent += `<rect x="${containerMargin}" y="${containerMargin}" width="${canvasWidth - containerMargin * 2}" height="${canvasHeight - containerMargin * 2}" ${borderAttrs} />`; // Use colors.borderColor
         }
       }
 
       blobsRef.current.forEach((blob) => {
-        if (blob && blob.particles.length > 0) {
+        if (blob && blob.getSVGPath) {
           const path = blob.getSVGPath();
-          svgContent += `<path d="${path}" fill="${colors.fill}" stroke="${colors.border}" stroke-width="1" />`;
+         
+          svgContent += `<path d="${path}" fill="${colors.blobFill}" stroke="${colors.blobBorder}" stroke-width="1" />`; // Use colors.blobFill and colors.blobBorder
         }
       });
 
@@ -805,7 +780,7 @@ export function BlobSimulation() {
         // No baseline offset for SVG overlays
         const svgCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
         const svgCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
-        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.obstacle}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
+        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.letterColor}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`; // Use colors.letterColor
       }
 
       svgContent += `</svg>`;

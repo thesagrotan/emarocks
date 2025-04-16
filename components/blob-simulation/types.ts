@@ -30,6 +30,11 @@ export interface SimulationParams {
   darkBlobBorderColor: string;
   letterColor: string;
   darkLetterColor: string;
+  themeToggleBgColorLight: string;
+  themeToggleBgColorDark: string;
+  themeToggleIconColorLight: string;
+  themeToggleIconColorDark: string;
+
 
   // Interaction/Tools
   toolMode: 'add' | 'remove' | 'drag-letter' | null;

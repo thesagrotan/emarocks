@@ -10,6 +10,7 @@ import { SimulationParams } from "./types"
 import { Info } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import React, { useEffect, useState } from "react"
+import { ThemeToggle } from "../theme-toggle"
 
 interface SimulationControlsProps {
   params: SimulationParams
@@ -163,6 +164,15 @@ export function SimulationControls({
   return (
     <Card className="w-full max-w-full max-h-screen overflow-y-auto">
       <div className="p-4 space-y-4">
+        {/* Theme Toggle Button */}
+        <ThemeToggle
+          bgColorLight={params.themeToggleBgColorLight}
+          bgColorDark={params.themeToggleBgColorDark}
+          iconColorLight={params.themeToggleIconColorLight}
+          iconColorDark={params.themeToggleIconColorDark}
+        />
+
+
         {/* Restart Button */}
         <Button
           variant="outline"
@@ -426,18 +436,17 @@ export function SimulationControls({
                   param="fontFamily"
                 >
                   Letter Font
-                </ParamLabel>
-                <div className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    id="fontFamily"
-                    value={params.fontFamily || ''}
-                    onChange={(e) => onParamChange('fontFamily', e.target.value)}
-                    className="w-full border rounded bg-transparent dark:border-neutral-700 px-1 text-sm"
-                    placeholder="e.g. Arial, Fira Code, SF Pro Display"
-                  />
-                </div>
-              </div>
+                </ParamLabel>                
+                <select
+                  id="fontFamily"
+                  value={params.fontFamily || ''}
+                  onChange={(e) => onParamChange('fontFamily', e.target.value)}
+                  className="w-full border rounded bg-transparent dark:border-neutral-700 px-1 text-sm"
+                >
+                  {systemFonts.map((font) => (<option key={font} value={font}>{font}</option>))}
+                  {systemFonts.length === 0 && (<option value="">Default</option>)}
+                </select>
+              </div>              
             </>
           )}
         </div>
