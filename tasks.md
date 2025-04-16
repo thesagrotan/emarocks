@@ -16,30 +16,34 @@
 - Section 1 is complete.
 
 ## 2. Centralize Theme and Color Logic
-- [ ] Create a utility or React context for theme-based color selection (e.g., `getSimulationColors(params, theme)`).
-- [ ] Refactor all color logic in components and utilities to use this central utility/context, including all theme toggling and color selection for light/dark modes.
-- [ ] Ensure color logic is consistent and correct across all usages, including SVG export, canvas drawing, overlays, and UI controls.
-- [ ] Document the color utility/context and provide usage examples.
+- [x] Create a utility or React context for theme-based color selection (e.g., `getSimulationColors(params, theme)`).
+- [x] Refactor all color logic in components and utilities to use this central utility/context, including all theme toggling and color selection for light/dark modes.
+- [x] Ensure color logic is consistent and correct across all usages, including SVG export, canvas drawing, overlays, and UI controls.
+- [x] Document the color utility/context and provide usage examples.
 
 **Notes:**
-- `getSimulationColors` utility has not been created yet and is not in `shared/utils.ts`
-- The task is still pending.
+- `getSimulationColors` utility has been created in `shared/utils.ts` and now handles all theme-based color selection
+- The `ThemeToggle` component has been updated to use the centralized color utility
+- Canvas rendering, SVG export, and UI components now consistently use the centralized color logic
+- Comprehensive documentation added to `documentation_updates.md` with examples and implementation notes
+- Section 2 is complete
 
 ## 3. Modularize Blob Initialization and Placement
 - [x] Extract blob placement and initialization logic from the main simulation component into reusable functions or custom hooks (e.g., `useBlobPlacement`).
-- [ ] Memoize expensive calculations and derived values (e.g., letter area, mask generation, collision checks) using React or utility memoization where possible.
-- [ ] Add unit tests for blob placement logic, including edge cases (e.g., restricted area at edge, very small/large blob counts).
-- [ ] Document the new functions/hooks and provide usage examples.
+- [x] Memoize expensive calculations and derived values (e.g., letter area, mask generation, collision checks) using React or utility memoization where possible.
+- [x] Add unit tests for blob placement logic, including edge cases (e.g., restricted area at edge, very small/large blob counts).
+- [x] Document the new functions/hooks and provide usage examples.
 - [x] Implement "Add" and "Remove" blob functionalities using canvas click events.
 - [x] Integrate a font selector component into the UI to allow users to choose different fonts for the letter within the restricted area.
 - [x] Ensure the selected font is correctly applied to the letter rendering on the canvas and in the SVG export.
 
 **Notes:**
-- Section 3 is now more complete
 - `initializeBlobs` utility created in `blob-simulation/hooks.ts`
-- `blob-simulation.tsx` refactored to use `initializeBlobs` for all blob placement and initialization
-- Logic is now reusable, testable, and easier to maintain.
-- Next: consider memoization and add unit tests for `initializeBlobs`
+- `useLetterAreaCalculation` hook implemented to memoize expensive letter area calculations
+- `blob-simulation.tsx` refactored to use these utilities for all blob placement and initialization
+- Comprehensive unit tests added in `hooks.test.ts` to verify blob initialization logic and edge cases
+- Detailed documentation added to `blob-simulation/README.md` explaining the new utilities and hooks
+- Section 3 is complete
 
 ## 4. Improve State and Animation Management
 - [ ] Move animation frame and simulation state logic into a custom React hook (e.g., `useBlobSimulationAnimation`).
@@ -76,7 +80,7 @@
 
 ## 9. Documentation & Comments
 - [ ] Add or improve comments and documentation for all complex logic, especially in utility and core simulation files. Use JSDoc or TypeScript doc comments where possible.
-- [ ] Keep `refactor-log.txt` updated as you progress, to track what’s been done and what’s pending. Include dates and a brief summary for each entry.
+- [ ] Keep `refactor-log.txt` updated as you progress, to track what's been done and what's pending. Include dates and a brief summary for each entry.
 - [ ] Ensure all README files and in-code documentation are up to date with the new structure and APIs.
 
 **Updated:**

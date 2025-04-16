@@ -2,17 +2,39 @@
 
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { getSimulationColors } from "@/shared/utils";
+import { SimulationParams } from "@/components/blob-simulation/types";
 
 interface ThemeToggleProps {
-  
+  bgColorLight?: string;
+  bgColorDark?: string;
+  iconColorLight?: string;
+  iconColorDark?: string;
 }
 
-export function ThemeToggle({ }: ThemeToggleProps) {
+export function ThemeToggle({ 
+  bgColorLight = "#D3D3D3",
+  bgColorDark = "#333333",
+  iconColorLight = "#000000",
+  iconColorDark = "#FFFFFF"
+}: ThemeToggleProps) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-
-  const buttonBg = theme === "dark" ? "#333333" : "#D3D3D3";
-  const iconColor = theme === "dark" ? "#FFFFFF" : "#000000";
+  
+  // Create minimal params object with just the theme toggle colors
+  const themeParams: Partial<SimulationParams> = {
+    themeToggleBgColorLight: bgColorLight,
+    themeToggleBgColorDark: bgColorDark,
+    themeToggleIconColorLight: iconColorLight,
+    themeToggleIconColorDark: iconColorDark,
+  };
+  
+  // Get theme-appropriate colors from the central utility
+  const colors = getSimulationColors(themeParams as SimulationParams, theme || 'light');
+  
+  // Use the colors returned from the utility
+  const buttonBg = colors.themeToggleBg;
+  const iconColor = colors.themeToggleIcon;
   const iconTranslateX = theme === "dark" ? "27px" : "4px";
 
   useEffect(() => {
@@ -30,7 +52,8 @@ export function ThemeToggle({ }: ThemeToggleProps) {
   return (
     <button
       onClick={toggleTheme}
-      className={`relative bg-[${buttonBg}] rounded-[15px] w-[50px] h-[30px] border-none cursor-pointer p-0 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2`}
+      className="relative rounded-[15px] w-[50px] h-[30px] border-none cursor-pointer p-0 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{ backgroundColor: buttonBg }}
       aria-label="Toggle dark mode"
     >
       <svg

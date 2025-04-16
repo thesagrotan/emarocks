@@ -12,7 +12,7 @@ import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
 import { getSimulationColors, hexToRgba, poissonDiskSampling } from "@/shared/utils" // Import getSimulationColors
 import { SimulationParamsContext } from "./blob-simulation/context"
-import { useSimulationParams } from "./blob-simulation/hooks"
+import { useSimulationParams, useLetterAreaCalculation, initializeBlobs } from "./blob-simulation/hooks"
 import * as SimulationUtils from "./blob-simulation/utils"
 import { SimulationParams, SimulationColors, RestrictedAreaParams } from "./blob-simulation/types"
 
@@ -269,19 +269,6 @@ export function BlobSimulation() {
 
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       setIsAnimating(false);
-
-      const { 
-        shapeCount, 
-        edgePointCount, 
-        minBlobSize, 
-        repelDistance, 
-        containerMargin,
-        letterColor,
-        darkLetterColor 
-      } = simulationParams;
-      
-      // Use the theme-appropriate letter color for collision detection
-      const letterDisplayColor = currentTheme === "dark" ? darkLetterColor : letterColor;
       
       const canvasSize = 512;
       const dpi = getDevicePixelRatio();
@@ -293,123 +280,22 @@ export function BlobSimulation() {
       canvas.style.height = `${canvasSize}px`;
       ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
 
-      const logicalWidth = canvasSize - containerMargin;
-      const logicalHeight = canvasSize - containerMargin;
-      const minBlobDist = (minBlobSize * 2) + repelDistance;
-      const pdsRestrictedArea = calculateRestrictedAreaParams(logicalWidth, logicalHeight);
-
-      // Initialize blobs array
-      blobsRef.current = [];
-
-      // Calculate letter area and remaining area
-      let letterArea = 0;
-      let totalArea = logicalWidth * logicalHeight;
-      let letterCenterX = 0, letterCenterY = 0;
-
-      if (pdsRestrictedArea?.letter) {
-        // Create temporary canvas for area calculation
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = canvasSize;
-        tempCanvas.height = canvasSize;
-        const tempCtx = tempCanvas.getContext('2d');
-        if (!tempCtx) return;
-
-        // Draw letter temporarily to calculate its area using the current theme color and font
-        tempCtx.fillStyle = letterDisplayColor;
-        tempCtx.clearRect(0, 0, canvasSize, canvasSize);
-        letterCenterX = pdsRestrictedArea.x + pdsRestrictedArea.size / 2;
-        letterCenterY = pdsRestrictedArea.y + pdsRestrictedArea.size / 2;
-        SimulationUtils.drawLetter(tempCtx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, letterDisplayColor, simulationParams.fontFamily);
-        
-        // Count letter pixels from temp canvas
-        const imageData = tempCtx.getImageData(0, 0, canvasSize, canvasSize);
-        const pixels = imageData.data;
-        let letterPixels = 0;
-        for (let i = 0; i < pixels.length; i += 4) {
-          if (pixels[i] > 0 || pixels[i + 1] > 0 || pixels[i + 2] > 0) { // Check all color channels
-            letterPixels++;
-          }
-        }
-        letterArea = (letterPixels / (canvasSize * canvasSize)) * totalArea;
-
-        // Clean up temporary canvas
-        tempCanvas.width = 1;
-        tempCanvas.height = 1;
-      }
-
-      const outsideArea = totalArea - letterArea;
-      const letterAreaRatio = letterArea / totalArea;
-      const insideShapeCount = Math.round(shapeCount * letterAreaRatio);
-      const outsideShapeCount = shapeCount - insideShapeCount;
-
-      // Create points for blobs outside the letter
-      for (let i = 0; i < outsideShapeCount; i++) {
-        let x, y;
-        let attempts = 0;
-        const maxAttempts = 50;
-
-        do {
-          x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-          y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-          attempts++;
-
-          // Check if point is outside letter and not too close to other blobs
-          const isValidPosition = pdsRestrictedArea?.letter ? 
-            !SimulationUtils.isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily) :
-            true;
-
-          if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
-            blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
-            break;
-          }
-        } while (attempts < maxAttempts);
-      }
-
-      // Create points for blobs inside the letter
-      if (pdsRestrictedArea?.letter && insideShapeCount > 0) {
-        for (let i = 0; i < insideShapeCount; i++) {
-          let x, y;
-          let attempts = 0;
-          const maxAttempts = 50;
-
-          do {
-            x = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-            y = containerMargin + Math.random() * (canvasSize - 2 * containerMargin);
-            attempts++;
-
-            const isValidPosition = SimulationUtils.isPointInLetter(ctx, pdsRestrictedArea.letter, letterCenterX, letterCenterY, pdsRestrictedArea.size, x, y, letterDisplayColor, simulationParams.fontFamily);
-
-            if (isValidPosition && !SimulationUtils.isOverlappingOtherBlobs(x, y, blobsRef.current, minBlobSize, repelDistance)) {
-              blobsRef.current.push(new Blob(x, y, edgePointCount, minBlobSize, repelDistance));
-              break;
-            }
-          } while (attempts < maxAttempts);
-        }
-      }
-
-      // --- Remove any blobs that are in the restricted area after distribution ---
-      if (pdsRestrictedArea?.letter) {
-        const letterCenterXCheck = pdsRestrictedArea.x + pdsRestrictedArea.size / 2;
-        const letterCenterYCheck = pdsRestrictedArea.y + pdsRestrictedArea.size / 2;
-        const letterSizeCheck = pdsRestrictedArea.size;
-        const fontFamilyCheck = simulationParams.fontFamily;
-        const letterDisplayColorCheck = letterDisplayColor;
-
-        blobsRef.current = blobsRef.current.filter(blob => {
-          // Remove any blob whose center is inside the restricted area letter
-          return !SimulationUtils.isPointInLetter(
-            ctx,
-            pdsRestrictedArea.letter,
-            letterCenterXCheck,
-            letterCenterYCheck,
-            letterSizeCheck,
-            blob.centre.x,
-            blob.centre.y,
-            letterDisplayColorCheck,
-            fontFamilyCheck
-          );
-        });
-      }
+      // Get theme-appropriate letter color
+      const letterDisplayColor = currentTheme === "dark" 
+        ? simulationParams.darkLetterColor 
+        : simulationParams.letterColor;
+      
+      // Calculate restricted area parameters
+      const pdsRestrictedArea = calculateRestrictedAreaParams(canvasSize, canvasSize);
+      
+      // Use the modularized blob initialization utility
+      blobsRef.current = initializeBlobs(
+        ctx,
+        simulationParams,
+        canvasSize,
+        pdsRestrictedArea,
+        letterDisplayColor
+      );
 
       console.log("Initialization complete.");
       draw();
@@ -878,6 +764,9 @@ export function BlobSimulation() {
       </div>
     );
   }
+  
+  // Get theme-appropriate colors for the simulation
+  const colors = getSimulationColors(simulationParams, currentTheme);
 
   // --- JSX ---
   return (
@@ -890,7 +779,7 @@ export function BlobSimulation() {
             ref={canvasRef}
             onClick={handleCanvasClick}
             className={`block rounded-lg w-full h-full border border-neutral-300 dark:border-neutral-700 ${simulationParams.toolMode ? 'cursor-crosshair' : 'cursor-default'}`}
-            style={{ backgroundColor: currentTheme === 'dark' ? simulationParams.darkBackgroundColor : simulationParams.backgroundColor }}
+            style={{ backgroundColor: colors.backgroundColor }}
           />
           {/* Live Editing Indicator */}
           {isLiveEditing && (

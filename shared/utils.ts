@@ -14,12 +14,35 @@ export function hexToRgba(hex: string, alpha: number = 1): string {
   if (!hex.startsWith('#')) {
     hex = '#' + hex;
   }
+  
+  try {
+    // Expand 3-digit hex to 6-digit
+    if (hex.length === 4) {
+      hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+    }
+    
+    // Validate hex format
+    if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+      console.warn(`Invalid hex color provided to hexToRgba: ${hex}`);
+      return 'rgba(0,0,0,0)';
+    }
+    
     hex = hex.replace(/^#/, '');
     const bigint = parseInt(hex, 16);
+    
+    if (isNaN(bigint)) {
+      console.warn(`Could not parse hex color: ${hex}`);
+      return 'rgba(0,0,0,0)';
+    }
+    
     const r = (bigint >> 16) & 255;
     const g = (bigint >> 8) & 255;
     const b = bigint & 255;
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  } catch (error) {
+    console.warn(`Error in hexToRgba for ${hex}: ${error}`);
+    return 'rgba(0,0,0,0)';
+  }
 }
 
 /**
@@ -54,32 +77,70 @@ export function poissonDiskSampling(
   return []
 }
 
-
+/**
+ * Returns simulation colors based on the current theme and parameters
+ * 
+ * @param {SimulationParams} params - The simulation parameters including color settings
+ * @param {string} theme - The current theme ('light' or 'dark')
+ * @returns {Object} An object containing all theme-appropriate colors for the simulation
+ */
 export function getSimulationColors(
-  params: any,
+  params: SimulationParams,
   theme: string
-): { backgroundColor: string; blobFill: string; letterColor: string; restrictedAreaColor: string; borderColor: string } {
-  let backgroundColor: string;
-  let blobFill: string;
-  let letterColor: string;
-  let borderColor: string;
-  let blobFillOpacity: number;
-
-  if (theme === 'dark') {
-    backgroundColor = params.darkBackgroundColor || '#121212';
-    blobFill = params.darkBlobFillColor || '#00FFFF';
-    letterColor = params.darkLetterColor || '#FFFFFF';
-    borderColor = params.darkBlobBorderColor || '#77e4cb';
-    blobFillOpacity = params.darkBlobFillOpacity;
-  } else {
-    backgroundColor = params.backgroundColor || '#FFFFFF';
-    blobFill = params.blobFillColor || '#0000FF';
-    letterColor = params.letterColor || '#000000';
-    borderColor = params.blobBorderColor || '#466e91';
-    blobFillOpacity = params.blobFillOpacity;
-  }
-
-  const rgbaBlobFill = hexToRgba(blobFill, blobFillOpacity);
-  const restrictedAreaColor = hexToRgba(theme === 'dark' ? '#00FFFF' : '#0000FF', 0.1)
-  return { backgroundColor, blobFill: rgbaBlobFill, letterColor, restrictedAreaColor, borderColor };
+): {
+  backgroundColor: string;
+  blobFill: string;
+  blobBorder: string;
+  letterColor: string;
+  borderColor: string;
+  themeToggleBg: string;
+  themeToggleIcon: string;
+} {
+  const isDark = theme === 'dark';
+  
+  // Background color
+  const backgroundColor = isDark
+    ? params.darkBackgroundColor || '#1a2b2f'
+    : params.backgroundColor || '#aac9ca';
+  
+  // Blob fill color with opacity
+  const rawBlobFill = isDark
+    ? params.darkBlobFillColor || '#000000'
+    : params.blobFillColor || '#ffffff';
+  const blobFillOpacity = isDark
+    ? params.darkBlobFillOpacity || 0.3
+    : params.blobFillOpacity || 0.3;
+  const blobFill = hexToRgba(rawBlobFill, blobFillOpacity);
+  
+  // Blob border color
+  const blobBorder = isDark
+    ? params.darkBlobBorderColor || '#77e4cb'
+    : params.blobBorderColor || '#466e91';
+  
+  // Letter color
+  const letterColor = isDark
+    ? params.darkLetterColor || '#FFFFFF'
+    : params.letterColor || '#000000';
+  
+  // Border color for container (same as blob border if not specified)
+  const borderColor = blobBorder;
+  
+  // Theme toggle button colors
+  const themeToggleBg = isDark
+    ? params.themeToggleBgColorDark || '#333333'
+    : params.themeToggleBgColorLight || '#D3D3D3';
+    
+  const themeToggleIcon = isDark
+    ? params.themeToggleIconColorDark || '#FFFFFF'
+    : params.themeToggleIconColorLight || '#000000';
+  
+  return {
+    backgroundColor,
+    blobFill,
+    blobBorder,
+    letterColor,
+    borderColor,
+    themeToggleBg,
+    themeToggleIcon,
+  };
 }

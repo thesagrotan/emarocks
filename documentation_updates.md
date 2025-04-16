@@ -1,51 +1,81 @@
 ## `getSimulationColors` Utility Function
 
-This utility function centralizes the theme-based color selection logic for the blob simulation.
+The `getSimulationColors` utility function centralizes all theme-based color selection for the Blob Simulation project. It ensures consistent color handling across all components and features, including canvas rendering, SVG export, and UI controls.
 
-**Location:** `shared/utils.ts`
+### Function Signature
 
-**Function Signature:**
-```
-typescript
+```typescript
 function getSimulationColors(
   params: SimulationParams,
-  theme: 'light' | 'dark'
+  theme: string
 ): {
-  bg: string;
-  fill: string;
-  border: string;
-  obstacle: string;
-  obstacleText: string;
-  themeToggleBg: string; // Added for theme toggle
-  themeToggleIcon: string; // Added for theme toggle
+  backgroundColor: string;
+  blobFill: string;
+  blobBorder: string;
+  letterColor: string;
+  borderColor: string;
+  themeToggleBg: string;
+  themeToggleIcon: string;
 }
 ```
-**Parameters:**
 
-*   `params`: An object containing the simulation parameters, including color settings for both light and dark themes. The `SimulationParams` interface in `components/blob-simulation/types.ts` has been updated to include the following properties:
+### Parameters
 
-    *   `themeToggleBgColorLight`: Background color for the theme toggle button in light mode.
-    *   `themeToggleBgColorDark`: Background color for the theme toggle button in dark mode.
-    *   `themeToggleIconColorLight`: Icon color for the theme toggle button in light mode.
-    *   `themeToggleIconColorDark`: Icon color for the theme toggle button in dark mode.
+- `params`: The simulation parameters object containing all color-related settings
+- `theme`: The current theme ('light' or 'dark')
 
-*   `theme`: A string indicating the current theme, either `'light'` or `'dark'`.
+### Return Value
 
-**Return Value:**
+An object containing all theme-appropriate colors for the simulation:
 
-An object containing the following color properties, based on the provided `theme` and values in the `params` object:
+- `backgroundColor`: Background color for the simulation canvas
+- `blobFill`: Fill color for blobs (with opacity already applied)
+- `blobBorder`: Border color for blobs
+- `letterColor`: Color for the restricted area letter
+- `borderColor`: Border color for the container
+- `themeToggleBg`: Background color for the theme toggle button
+- `themeToggleIcon`: Icon color for the theme toggle button
 
-*   `bg`: Background color of the simulation canvas.
-*   `fill`: Fill color of the blobs.
-*   `border`: Border color of the blobs and container.
-*   `obstacle`: Color of the restricted area letter.
-*   `obstacleText`: Color of the text within obstacles (if applicable). Note: This might be redundant with `obstacle` and could be reviewed for removal.
-*   `themeToggleBg`: Background color for the theme toggle button.
-*   `themeToggleIcon`: Icon color for the theme toggle button.
+### Usage Examples
 
-**Usage:**
+#### In BlobSimulation.tsx
 
-The `getSimulationColors` function is used within the `BlobSimulation` component to determine the appropriate colors for rendering the simulation based on the current theme and user-configurable parameters. It is also used in the `downloadSVG` function to ensure the SVG output matches the current theme.
+```typescript
+// Get theme-appropriate colors for the current theme
+const colors = getSimulationColors(simulationParams, currentTheme);
+
+// Use the returned colors for canvas drawing
+ctx.fillStyle = colors.backgroundColor;
+ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+// Use colors for SVG export
+const svgContent = `<svg style="background-color: ${colors.backgroundColor};">...</svg>`;
+```
+
+#### In ThemeToggle.tsx
+
+```typescript
+// Create minimal params with just theme toggle properties
+const themeParams: Partial<SimulationParams> = {
+  themeToggleBgColorLight: bgColorLight,
+  themeToggleBgColorDark: bgColorDark,
+  themeToggleIconColorLight: iconColorLight,
+  themeToggleIconColorDark: iconColorDark,
+};
+
+// Get theme-appropriate colors from the utility
+const colors = getSimulationColors(themeParams as SimulationParams, theme || 'light');
+
+// Use the colors returned from the utility
+const buttonBg = colors.themeToggleBg;
+const iconColor = colors.themeToggleIcon;
+```
+
+### Implementation Notes
+
+- The function handles opacity for blob fill colors by using the `hexToRgba` utility
+- Default fallback colors are provided for each property in case they're missing from params
+- The utility ensures consistent color handling regardless of theme changes
 
 ## Updated `BlobSimulation` Component
 
