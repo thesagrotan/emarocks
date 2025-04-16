@@ -638,3 +638,52 @@ export function useBlobSimulationAnimation(
     animationFrameIdRef
   };
 }
+
+/**
+ * Hook to manage letter shape cache invalidation when font parameters change
+ * 
+ * This hook ensures the letter shape cache is cleared whenever any of the
+ * parameters that affect letter rendering change, such as:
+ * - The letter character itself
+ * - Font family
+ * - Letter color
+ * - Letter size
+ * 
+ * @param {object} params - Current simulation parameters that impact letter rendering
+ * @param {string} currentTheme - Current theme ('light' or 'dark')
+ * @returns {void} 
+ */
+export function useLetterCacheInvalidation(
+  params: Pick<SimulationParams, 'restrictedAreaLetter' | 'fontFamily' | 'letterColor' | 'darkLetterColor' | 'restrictedAreaSize'>,
+  currentTheme: string
+): void {
+  // Track parameters that should trigger cache invalidation
+  const cacheKey = useMemo(() => ({
+    letter: params.restrictedAreaLetter,
+    fontFamily: params.fontFamily,
+    letterColor: currentTheme === 'dark' ? params.darkLetterColor : params.letterColor,
+    size: params.restrictedAreaSize
+  }), [
+    params.restrictedAreaLetter,
+    params.fontFamily,
+    params.letterColor,
+    params.darkLetterColor,
+    params.restrictedAreaSize,
+    currentTheme
+  ]);
+  
+  // Effect that invalidates the cache when relevant params change
+  useEffect(() => {
+    // Import clearLetterCache from font-utils to ensure we're using the centralized version
+    import('@/shared/font-utils').then(({ clearLetterCache }) => {
+      // Clear the letter shape cache when parameters change
+      clearLetterCache(SimulationUtils.letterShapeCache);
+      console.debug('Letter shape cache cleared due to parameter change:', cacheKey);
+    });
+  }, [
+    cacheKey.letter, 
+    cacheKey.fontFamily, 
+    cacheKey.letterColor,
+    cacheKey.size
+  ]);
+}

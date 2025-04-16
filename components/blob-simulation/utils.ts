@@ -1,30 +1,25 @@
 import { Vector2 } from 'three';
 import { Blob as SimBlob } from './blob';
 import { hexToRgba, poissonDiskSampling } from "@/shared/utils";
+import { 
+  formatFontFamily, 
+  getLetterVisualBounds as getLetterVisualBoundsBase,
+  createFontString,
+  clearLetterCache
+} from "@/shared/font-utils";
 // Simulation utilities
 
 /**
  * Calculates the visual baseline offset for centering a letter within a canvas.
- *
- * @param {string} letter - The letter to measure.
- * @param {number} size - The font size of the letter.
- * @param {string} font - The font family of the letter.
- * @returns {{ baseline: number }} An object containing the baseline offset.
+ * @deprecated Use the centralized version from shared/font-utils.ts instead
  */
 export function getLetterVisualBounds(letter: string, size: number, font: string): { baseline: number } {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
-  ctx.font = font;
-  const metrics = ctx.measureText(letter);
-  const baseline = (metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent) / 2 - metrics.fontBoundingBoxAscent;
-  return { baseline };
+  // Forward to the centralized implementation for compatibility with existing code
+  const result = getLetterVisualBoundsBase(letter, size, font);
+  return { baseline: result.baseline };
 }
 
-
-function formatFontFamily(fontFamily?: string) {
-  if (!fontFamily) return "Arial";
-  return fontFamily.includes(" ") ? `"${fontFamily}"` : fontFamily;
-}
+// formatFontFamily is now imported from shared/font-utils.ts
 
 /**
  * Draw letter on canvas context
@@ -41,8 +36,8 @@ export function drawLetter(
   // Save the current context state
   ctx.save();
   // Get visual bounds for true centering
-  const font = `bold ${size}px ${formatFontFamily(fontFamily)}`;
-  const { baseline } = getLetterVisualBounds(letter, size, font);
+  const font = createFontString(size, fontFamily); // Using centralized font string creation
+  const { baseline } = getLetterVisualBoundsBase(letter, size, font);
   ctx.font = font;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -95,8 +90,8 @@ export function isPointInLetter(
     offCtx.fillRect(0, 0, w, h);
     
     // Draw the letter in specified color, baseline centered
-    const font = `bold ${letterSize}px ${formatFontFamily(fontFamily)}`;
-    const { baseline } = getLetterVisualBounds(letter, letterSize, font);
+    const font = createFontString(letterSize, fontFamily); 
+    const { baseline } = getLetterVisualBoundsBase(letter, letterSize, font);
     offCtx.fillStyle = color;
     offCtx.font = font;
     offCtx.textAlign = "center";
@@ -136,10 +131,19 @@ export function createLetterPath(ctx: CanvasRenderingContext2D, letter: string, 
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
-  const tempCtx = canvas.getContext('2d')!;
+  const tempCtx = canvas.getContext('2d');
   
-  const font = `bold ${size}px ${formatFontFamily(fontFamily)}`;
-  const { baseline } = getLetterVisualBounds(letter, size, font);
+  if (!tempCtx) {
+    console.warn('Canvas 2D context not available for createLetterPath');
+    return {
+      canvas,
+      ctx: ctx,
+      imageData: new ImageData(1, 1)
+    };
+  }
+  
+  const font = createFontString(size, fontFamily);
+  const { baseline } = getLetterVisualBoundsBase(letter, size, font);
   tempCtx.font = font;
   tempCtx.textAlign = "center";
   tempCtx.textBaseline = "middle";

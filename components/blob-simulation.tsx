@@ -1,23 +1,23 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { Download, Pause, Play, Plus, Eraser } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { useTheme } from "next-themes"
 import { Vector2 } from "three"
 
 // Import refactored components and types
 import { SimulationControls } from "./blob-simulation/simulation-controls"
 import { Blob } from "./blob-simulation/blob"
-import { getSimulationColors } from "@/shared/utils" // Removed unused imports
 import { SimulationParamsContext } from "./blob-simulation/context"
 import { 
   useLetterAreaCalculation, 
   initializeBlobs,
-  useBlobSimulationAnimation
+  useBlobSimulationAnimation,
+  useLetterCacheInvalidation
 } from "./blob-simulation/hooks"
 import * as SimulationUtils from "./blob-simulation/utils"
 import { SimulationParams, RestrictedAreaParams } from "./blob-simulation/types"
+import { SimulationCanvas, drawSimulation } from "./blob-simulation/SimulationCanvas"
+import { SimulationOverlays } from "./blob-simulation/SimulationOverlays"
 
 // Safely access window properties with a function that only runs client-side
 const getDevicePixelRatio = () => {
@@ -175,91 +175,18 @@ export function BlobSimulation() {
 
   /**
    * Main draw function that renders the current state to the canvas
-   * Handles rendering of background, border, letter, and blobs
+   * Uses the extracted drawSimulation utility
    */
   const draw = useCallback(() => {
     try {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      const { showBorder, containerMargin, isRoundedContainer, restrictedAreaEnabled } = simulationParams;
-      
-      // Get theme-appropriate colors
-      const colors = getSimulationColors(simulationParams, currentTheme);
-
-      const dpi = getDevicePixelRatio();
-      const canvasWidth = CANVAS_SIZE;
-      const canvasHeight = CANVAS_SIZE;
-
-      // Reset transform and clear canvas
-      ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
-      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-      ctx.fillStyle = colors.backgroundColor;
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-      // Draw container boundary
-      if (showBorder && containerMargin > 0) {
-        ctx.strokeStyle = colors.borderColor;
-        ctx.lineWidth = 1;
-         if (isRoundedContainer) {
-          const radius = (Math.min(canvasWidth, canvasHeight) - containerMargin * 2) / 2;
-          const centerX = canvasWidth / 2;
-          const centerY = canvasHeight / 2;
-          if (radius > 0) {
-            ctx.beginPath();
-            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-        } else {
-          ctx.strokeRect(containerMargin, containerMargin, canvasWidth - containerMargin * 2, canvasHeight - containerMargin * 2);
-        }
-      }
-      
-      // Draw static obstacle/restricted area BEFORE blobs (for visual clarity)
-      const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
-      if (restrictedAreaEnabled && restrictedAreaParams) {
-        if (restrictedAreaParams.letter) {
-          // Get baseline offset for perfect visual centering
-          const font = `bold ${restrictedAreaParams.size}px ${simulationParams.fontFamily || "Arial"}`;
-          const { baseline } = SimulationUtils.getLetterVisualBounds(restrictedAreaParams.letter, restrictedAreaParams.size, font);
-
-          // Draw the letter visually centered
-          const rectCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
-          const rectCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
-          const rectSize = restrictedAreaParams.size;
-          SimulationUtils.drawLetter(
-            ctx, 
-            restrictedAreaParams.letter,
-            rectCenterX,
-            rectCenterY,
-            rectSize, 
-            colors.letterColor,
-            restrictedAreaParams.fontFamily
-          );
-
-          // Debug crosshair (can be removed in production)
-          if (process.env.NODE_ENV === 'development') {
-            ctx.save();
-            ctx.strokeStyle = '#f00';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(rectCenterX - 10, rectCenterY);
-            ctx.lineTo(rectCenterX + 10, rectCenterY);
-            ctx.moveTo(rectCenterX, rectCenterY - 10);
-            ctx.lineTo(rectCenterX, rectCenterY + 10);
-            ctx.stroke();
-            ctx.restore();
-          }
-        }
-      }
-
-      // Draw blobs AFTER letter so they appear above it visually
-      blobsRef.current.forEach((blob) => {
-        if (blob?.draw) blob.draw(ctx, colors.blobFill, colors.blobBorder); 
-      });
+      drawSimulation(
+        canvasRef,
+        blobsRef,
+        simulationParams,
+        currentTheme,
+        calculateRestrictedAreaParams,
+        CANVAS_SIZE
+      );
     } catch (error) {
       console.error("Error during draw cycle:", error);
       setIsAnimating(false);
@@ -351,6 +278,9 @@ export function BlobSimulation() {
       
       // Calculate restricted area parameters
       const pdsRestrictedArea = calculateRestrictedAreaParams(canvasSize, canvasSize);
+      
+      // Clear any cached letter shape data before initialization
+      SimulationUtils.letterShapeCache.clear();
       
       // Use the modularized blob initialization utility
       blobsRef.current = initializeBlobs(
@@ -528,6 +458,9 @@ export function BlobSimulation() {
       
       const canvasWidth = CANVAS_SIZE;
       const canvasHeight = CANVAS_SIZE;
+      
+      // Import getSimulationColors from shared utils only when needed
+      const { getSimulationColors } = require("@/shared/utils");
       const colors = getSimulationColors(simulationParams, currentTheme);
 
       let svgContent = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${colors.backgroundColor};">`;
@@ -647,6 +580,39 @@ export function BlobSimulation() {
     }
   }, [simulationParams, draw]);
 
+  // Handle tool mode changes
+  const handleSetToolMode = (mode: 'add' | 'remove' | null) => {
+    setSimulationParams(prev => ({ 
+      ...prev, 
+      toolMode: prev.toolMode === mode ? null : mode 
+    }));
+  };
+
+  // Letter area calculation using our memoized hook
+  const restrictedAreaParams = calculateRestrictedAreaParams(CANVAS_SIZE, CANVAS_SIZE);
+  const letterDisplayColor = currentTheme === "dark" 
+    ? simulationParams.darkLetterColor 
+    : simulationParams.letterColor;
+  
+  // Use letter area calculation for analytics/debugging
+  const letterAreaStats = useLetterAreaCalculation(
+    restrictedAreaParams,
+    letterDisplayColor,
+    CANVAS_SIZE
+  );
+  
+  // Use our cache invalidation hook to keep letter rendering fresh
+  useLetterCacheInvalidation(
+    {
+      restrictedAreaLetter: simulationParams.restrictedAreaLetter,
+      fontFamily: simulationParams.fontFamily,
+      letterColor: simulationParams.letterColor,
+      darkLetterColor: simulationParams.darkLetterColor,
+      restrictedAreaSize: simulationParams.restrictedAreaSize
+    },
+    currentTheme
+  );
+
   // --- Loading Placeholder ---
   // If component is not mounted yet, render a placeholder to avoid hydration mismatch
   if (!isMounted) {
@@ -661,83 +627,34 @@ export function BlobSimulation() {
       </div>
     );
   }
-  
-  // Get theme-appropriate colors for the simulation
-  const colors = getSimulationColors(simulationParams, currentTheme);
 
   // --- JSX ---
   return (
     <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
       <div className="flex flex-col lg:flex-row gap-6 items-start p-4 md:p-6 w-full">
-        {/* Canvas Container */}
+        {/* Canvas Container with Overlays */}
         <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0 mx-auto lg:mx-0">
-          {/* Canvas Element */}
-          <canvas
-            ref={canvasRef}
-            onClick={handleCanvasClick}
-            className={`block rounded-lg w-full h-full border border-neutral-300 dark:border-neutral-700 ${simulationParams.toolMode ? 'cursor-crosshair' : 'cursor-default'}`}
-            style={{ backgroundColor: colors.backgroundColor }}
+          {/* Canvas Component */}
+          <SimulationCanvas
+            canvasRef={canvasRef}
+            blobsRef={blobsRef}
+            currentTheme={currentTheme}
+            params={simulationParams}
+            calculateRestrictedAreaParams={calculateRestrictedAreaParams}
+            canvasSize={CANVAS_SIZE}
+            isUsingTool={!!simulationParams.toolMode}
+            onCanvasClick={handleCanvasClick}
           />
           
-          {/* Live Editing Indicator */}
-          {isLiveEditing && (
-            <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-1 rounded-md text-xs">
-              Updating...
-            </div>
-          )}
-          
-          {/* Canvas Overlays */}
-          <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center pointer-events-none">
-            {/* Play/Pause Button */}
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={toggleAnimation}
-              className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
-              aria-label={isAnimating ? 'Pause simulation' : 'Play simulation'}
-            >
-              {isAnimating ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-            </Button>
-
-            {/* Tool Buttons */}
-            <div className="flex gap-2 pointer-events-auto">
-              <Button
-                variant="outline" 
-                size="icon"
-                onClick={() => setSimulationParams(prev => ({ 
-                  ...prev, 
-                  toolMode: prev.toolMode === 'add' ? null : 'add' 
-                }))}
-                className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${simulationParams.toolMode === 'add' ? 'ring-2 ring-white' : ''}`}
-                aria-label="Add Shape Tool"
-              >
-                <Plus className="w-5 h-5" />
-              </Button>
-              <Button
-                variant="outline" 
-                size="icon"
-                onClick={() => setSimulationParams(prev => ({ 
-                  ...prev, 
-                  toolMode: prev.toolMode === 'remove' ? null : 'remove' 
-                }))}
-                className={`bg-black/40 text-white hover:bg-black/60 border-none rounded-full ${simulationParams.toolMode === 'remove' ? 'ring-2 ring-white' : ''}`}
-                aria-label="Remove Shape Tool"
-              >
-                <Eraser className="w-5 h-5" />
-              </Button>
-            </div>
-
-            {/* Download Button */}
-            <Button
-              variant="outline" 
-              size="icon"
-              onClick={downloadSVG}
-              className="bg-black/40 text-white hover:bg-black/60 border-none rounded-full pointer-events-auto"
-              aria-label="Download as SVG"
-            >
-              <Download className="w-5 h-5" />
-            </Button>
-          </div>
+          {/* Overlays Component */}
+          <SimulationOverlays
+            isAnimating={isAnimating}
+            isLiveEditing={isLiveEditing}
+            toolMode={simulationParams.toolMode}
+            onToggleAnimation={toggleAnimation}
+            onSetToolMode={handleSetToolMode}
+            onDownloadSVG={downloadSVG}
+          />
         </div>
 
         {/* Settings Panel */}
