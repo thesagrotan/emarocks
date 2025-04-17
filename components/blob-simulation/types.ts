@@ -111,4 +111,7 @@ export interface SimulationParamsContextType {
   setSimulationParams: React.Dispatch<React.SetStateAction<SimulationParams>>;
 }
 
+/** Defines the possible tool modes for canvas interaction */
+export type ToolMode = 'add' | 'remove';
+
 // Removed SimBlob and SimParticle interfaces as they are replaced by the Blob class type

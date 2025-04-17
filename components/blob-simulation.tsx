@@ -8,7 +8,7 @@ import { Vector2 } from "three"
 // Remove SimulationPhysicsPanel import if it's no longer used anywhere else
 import { SimulationPhysicsPanel } from "./blob-simulation/simulation-physics-panel";
 import { AppearanceLayoutControls } from "./blob-simulation/appearance-layout-controls"; // Renamed import
-import { Blob } from "./blob-simulation/blob"
+import { Blob as SimulationBlob } from "./blob-simulation/blob" // Renamed import
 import { SimulationParamsContext } from "./blob-simulation/context"
 import {
   useLetterAreaCalculation,
@@ -22,6 +22,8 @@ import { SimulationCanvas, drawSimulation } from "./blob-simulation/SimulationCa
 import { SimulationOverlays } from "./blob-simulation/SimulationOverlays"
 import { logError, logWarn, logInfo } from "@/shared"; // Import logger
 import { paramDescriptions } from "./blob-simulation/param-descriptions"; // Import descriptions
+import { SimulationActionsProvider } from "@/contexts/SimulationActionsContext"; // Import the provider
+import BottomMenuBar from "@/components/BottomMenuBar"; // Import BottomMenuBar
 
 /**
  * Safely retrieves the device pixel ratio, returning 1 if `window` is not available (SSR).
@@ -67,9 +69,9 @@ export function BlobSimulation() {
   /**
    * Reference to the array containing all active Blob objects in the simulation.
    * Using a ref allows direct mutation during the animation loop without triggering re-renders.
-   * @type {React.RefObject<Blob[]>}
+   * @type {React.RefObject<SimulationBlob[]>}
    */
-  const blobsRef = useRef<Blob[]>([]);
+  const blobsRef = useRef<SimulationBlob[]>([]);
 
   /**
    * State flag indicating whether the simulation has completed its initial setup.
@@ -406,6 +408,7 @@ export function BlobSimulation() {
     if (!isMounted) return;
     try {
       const settingsString = JSON.stringify(simulationParams, null, 2);
+      // Use the standard Blob constructor (no window. prefix needed now)
       const blob = new Blob([settingsString], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -480,20 +483,14 @@ export function BlobSimulation() {
    * Programmatically clicks the hidden file input element.
    */
   const triggerFileInput = useCallback(() => {
-    // Find the input within AppearanceLayoutControls if ref is moved there,
-    // OR keep the ref here and pass the trigger function down.
-    // Let's keep the ref here for simplicity for now.
-    // We need to associate this ref with the input inside AppearanceLayoutControls.
-    // A better approach might be to pass the ref down, but let's try passing the trigger function.
-    // The input element needs to be accessible. Let's modify AppearanceLayoutControls to accept the ref.
-    // --- Alternative: Keep ref here, pass trigger function ---
-    // This requires the input element ID to be stable in AppearanceLayoutControls
-    const inputElement = document.getElementById('load-settings-input');
-    inputElement?.click();
-    // --- OR: Pass ref down (preferred) ---
-    // fileInputRef.current?.click(); // This won't work if ref is only here and input is in child
+    // Use the correct ID from simulation-physics-panel.tsx
+    const inputElement = document.getElementById('load-settings-input-physics');
+    if (inputElement) {
+      inputElement.click();
+    } else {
+      logWarn("Could not find file input element with id 'load-settings-input-physics'", undefined, "triggerFileInput");
+    }
   }, []);
-
 
   // --- Lifecycle Effects ---
 
@@ -629,7 +626,7 @@ export function BlobSimulation() {
     if (!isMounted) return;
     
     try {
-      logInfo("Generating SVG...", undefined, "downloadSVG"); // Replaced console.log
+      logInfo("Generating SVG...", undefined, "downloadSVG");
       const { 
         showBorder, containerMargin, isRoundedContainer,
         restrictedAreaEnabled
@@ -638,9 +635,23 @@ export function BlobSimulation() {
       const canvasWidth = MAIN_CANVAS_SIZE;
       const canvasHeight = MAIN_CANVAS_SIZE;
       
-      // Import getSimulationColors from shared utils only when needed
       const { getSimulationColors } = require("@/shared/utils");
       const colors = getSimulationColors(simulationParams, currentTheme);
+
+      // Helper function to escape XML characters
+      const escapeXml = (unsafe: string): string => {
+        if (!unsafe) return '';
+        return unsafe.replace(/[<>&'"]/g, (c) => {
+            switch (c) {
+                case '<': return '&lt;';
+                case '>': return '&gt;';
+                case '&': return '&amp;';
+                case '\'': return '&apos;';
+                case '"': return '&quot;';
+                default: return c;
+            }
+        });
+      };
 
       let svgContent = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${colors.backgroundColor};">`;
 
@@ -661,7 +672,8 @@ export function BlobSimulation() {
       blobsRef.current.forEach((blob) => {
         if (blob?.getSVGPath) {
           const path = blob.getSVGPath();
-          svgContent += `<path d="${path}" fill="${colors.blobFill}" stroke="${colors.blobBorder}" stroke-width="1" />`;
+          // Escape path data just in case, though unlikely to be the issue here
+          svgContent += `<path d="${escapeXml(path)}" fill="${colors.blobFill}" stroke="${colors.blobBorder}" stroke-width="1" />`;
         }
       });
 
@@ -669,12 +681,18 @@ export function BlobSimulation() {
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams?.letter) {
         const fontFamily = simulationParams.fontFamily || "Arial";
-        const svgFontFamily = fontFamily.includes(" ") ? `"${fontFamily}"` : fontFamily;
+        const safeFontFamily = escapeXml(fontFamily);
+        // Always enclose font family in quotes
+        const svgFontFamily = `"${safeFontFamily}"`; 
         
         const svgCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
         const svgCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
         
-        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.letterColor}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
+        // Escape the letter content
+        const safeLetter = escapeXml(restrictedAreaParams.letter);
+
+        // Ensure font-family attribute value is quoted
+        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.letterColor}" text-anchor="middle" dominant-baseline="middle">${safeLetter}</text>`;
       }
 
       svgContent += `</svg>`;
@@ -690,9 +708,7 @@ export function BlobSimulation() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      logError("Error downloading SVG:", error, "downloadSVG"); // Replaced console.error
-      // Consider using a more user-friendly notification instead of alert
-      // alert("Failed to download SVG. See console for details.");
+      logError("Error downloading SVG:", error, "downloadSVG");
       logWarn("Failed to download SVG. See console for details.", undefined, "downloadSVG");
     }
   }, [isMounted, simulationParams, currentTheme, calculateRestrictedAreaParams]);
@@ -736,8 +752,8 @@ export function BlobSimulation() {
             return;
           }
 
-          // Add a new blob at the click position
-          const newBlob = new Blob(x, y, edgePointCount, minBlobSize, repelDistance);
+          // Add a new blob at the click position using the renamed class
+          const newBlob = new SimulationBlob(x, y, edgePointCount, minBlobSize, repelDistance);
           blobsRef.current.push(newBlob);
           draw();
           break;
@@ -746,6 +762,7 @@ export function BlobSimulation() {
           // Remove blobs near click position
           let removedCount = 0;
           blobsRef.current = blobsRef.current.filter((blob) => {
+            // Check if blob is an instance of SimulationBlob if necessary
             if (!blob?.centre || typeof blob.maxRadius === 'undefined') return true;
             
             const distSq = blob.centre.distanceToSquared(new Vector2(x, y));
@@ -773,10 +790,10 @@ export function BlobSimulation() {
    * @param {'add' | 'remove' | null} mode - The tool mode to activate or null to deactivate.
    * @type {(mode: 'add' | 'remove' | null) => void}
    */
-  const handleSetToolMode = (mode: ToolMode | null) => {
-    // Use the separate state setter
-    setToolMode(prev => prev === mode ? null : mode); 
-  };
+  const handleSetToolModeAction = useCallback((mode: ToolMode | null) => {
+    // Add explicit type for prev
+    setToolMode((prev: ToolMode | null) => prev === mode ? null : mode);
+  }, []);
 
   /** Memoized calculation of restricted area parameters. @type {RestrictedAreaParams | undefined} */
   const restrictedAreaParams = calculateRestrictedAreaParams(MAIN_CANVAS_SIZE, MAIN_CANVAS_SIZE);
@@ -826,83 +843,104 @@ export function BlobSimulation() {
     );
   }
 
+  // --- Prepare actions for the context provider ---
+  const simulationActions = {
+    // isPlaying is handled internally by the context provider
+    // handlePlayPause is handled internally by the context provider (it calls toggleAnimation)
+    handleRestart,
+    handleLoadSettings: triggerFileInput, // Map triggerFileInput to handleLoadSettings
+    handleDownloadSettings,
+    handleDownloadSvg: downloadSVG,
+    handleAddBlob: () => handleSetToolModeAction('add'), // Map to tool mode setter
+    handleRemoveBlob: () => handleSetToolModeAction('remove'), // Map to tool mode setter
+    // We also need to provide the actual play/pause toggle function
+    // Let's modify the context provider slightly to accept this
+    togglePlayPause: toggleAnimation, 
+  };
+
   // --- Render ---
   return (
-    <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
-      {/* Main container - relative positioning context */}
-      <div className="relative w-full min-h-screen">
+    // Wrap the entire component content with the Provider
+    <SimulationActionsProvider actions={simulationActions}>
+      <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
+        {/* Main container - relative positioning context */}
+        <div className="relative w-full min-h-screen">
 
-        {/* Left Fixed Sidebar (Restored) */}
-        <div className={`fixed top-0 left-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
-          <SimulationPhysicsPanel
-            params={simulationParams}
-            onParamChange={handleParamChange}
-            onRestart={handleRestart}
-            onDownloadSVG={downloadSVG}
-            onDownloadSettings={handleDownloadSettings}
-            onLoadSettings={handleLoadSettings}
-            triggerFileInput={triggerFileInput} // Pass trigger function
-            isAnimating={isAnimating}
-            paramDescriptions={paramDescriptions}
-            canvasSize={MAIN_CANVAS_SIZE}
-            // Pass fileInputRef down if preferred
-            // fileInputRef={fileInputRef}
-          />
-        </div>
-
-        {/* Center Content Area (Main Canvas) - Restore padding */}
-        <div
-          className="flex justify-center items-center min-h-screen"
-          style={{
-            paddingLeft: `344px`, // Restore left padding
-            paddingRight: `344px`
-          }}
-        >
-          {/* Main Canvas Container */}
-          <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0">
-            {/* Main Canvas Component */}
-            <SimulationCanvas
-              canvasRef={canvasRef}
-              blobsRef={blobsRef}
-              currentTheme={currentTheme}
+          {/* Left Fixed Sidebar (Restored) */}
+          <div className={`fixed top-0 left-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
+            <SimulationPhysicsPanel
               params={simulationParams}
-              calculateRestrictedAreaParams={calculateRestrictedAreaParams}
-              canvasSize={MAIN_CANVAS_SIZE}
-              isUsingTool={!!toolMode}
-              onCanvasClick={handleCanvasClick}
-            />
-
-            {/* Overlays Component */}
-            <SimulationOverlays
-              isAnimating={isAnimating}
-              isLiveEditing={isLiveEditing}
-              toolMode={toolMode}
-              onToggleAnimation={toggleAnimation}
-              onSetToolMode={handleSetToolMode}
+              onParamChange={handleParamChange}
+              onRestart={handleRestart}
               onDownloadSVG={downloadSVG}
+              onDownloadSettings={handleDownloadSettings}
+              onLoadSettings={handleLoadSettings}
+              triggerFileInput={triggerFileInput} // Pass trigger function
+              isAnimating={isAnimating}
+              paramDescriptions={paramDescriptions}
+              canvasSize={MAIN_CANVAS_SIZE}
+              // Pass fileInputRef down if preferred
+              // fileInputRef={fileInputRef}
             />
           </div>
-        </div>
 
-        {/* Right Fixed Sidebar (Now contains all controls) */}
-        <div className={`fixed top-0 right-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
-          <AppearanceLayoutControls
-            params={simulationParams}
-            onParamChange={handleParamChange}
-            paramDescriptions={paramDescriptions}
-            currentTheme={currentTheme}
-            isAnimating={isAnimating}
-            // Mini Canvas Props
-            mainCanvasRef={canvasRef}
-            blobsRef={blobsRef} // Pass blobsRef down
-            miniCanvasSize={miniCanvasSize}
-            onMiniCanvasSizeChange={handleMiniCanvasSizeChange}
-            redrawMiniCanvasTrigger={redrawMiniCanvasTrigger}
-            // Removed physics/action props
-          />
-        </div>
+          {/* Center Content Area (Main Canvas) - Restore padding */}
+          <div
+            className="flex justify-center items-center min-h-screen"
+            style={{
+              paddingLeft: `344px`, // Restore left padding
+              paddingRight: `344px`
+            }}
+          >
+            {/* Main Canvas Container */}
+            <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0">
+              {/* Main Canvas Component */}
+              <SimulationCanvas
+                canvasRef={canvasRef}
+                blobsRef={blobsRef}
+                currentTheme={currentTheme}
+                params={simulationParams}
+                calculateRestrictedAreaParams={calculateRestrictedAreaParams}
+                canvasSize={MAIN_CANVAS_SIZE}
+                isUsingTool={!!toolMode}
+                onCanvasClick={handleCanvasClick}
+              />
 
-      </div>
-    </SimulationParamsContext.Provider>
+              {/* Overlays Component */}
+              <SimulationOverlays
+                isAnimating={isAnimating}
+                isLiveEditing={isLiveEditing}
+                toolMode={toolMode}
+                onToggleAnimation={toggleAnimation}
+                onSetToolMode={handleSetToolModeAction}
+                onDownloadSVG={downloadSVG}
+              />
+            </div>
+          </div>
+
+          {/* Right Fixed Sidebar (Now contains all controls) */}
+          <div className={`fixed top-0 right-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
+            <AppearanceLayoutControls
+              params={simulationParams}
+              onParamChange={handleParamChange}
+              paramDescriptions={paramDescriptions}
+              currentTheme={currentTheme}
+              isAnimating={isAnimating}
+              // Mini Canvas Props
+              mainCanvasRef={canvasRef}
+              blobsRef={blobsRef} // Pass blobsRef down
+              miniCanvasSize={miniCanvasSize}
+              onMiniCanvasSizeChange={handleMiniCanvasSizeChange}
+              redrawMiniCanvasTrigger={redrawMiniCanvasTrigger}
+              // Removed physics/action props
+            />
+          </div>
+
+          {/* Render BottomMenuBar here, inside the provider */}
+          <BottomMenuBar />
+
+        </div>
+      </SimulationParamsContext.Provider>
+    </SimulationActionsProvider>
   );
 }

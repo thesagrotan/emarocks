@@ -1,4 +1,5 @@
 import { createContext } from "react"
-import type { SimulationParams } from "./types"
+import type { SimulationParamsContextType } from "./types" // Import the correct type
 
-export const SimulationParamsContext = createContext<SimulationParams | undefined>(undefined)
+// Use SimulationParamsContextType for the context
+export const SimulationParamsContext = createContext<SimulationParamsContextType | undefined>(undefined)

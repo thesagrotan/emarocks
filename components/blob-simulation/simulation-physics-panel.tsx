@@ -99,7 +99,7 @@ export function SimulationPhysicsPanel({
                     {renderSlider('interactionStrength', 'Interaction', 0, 0.5, 0.01)}
                     {renderSlider('gravity', 'Gravity', -0.5, 0.5, 0.01)}
                     {renderSlider('damping', 'Damping', 0.1, 1, 0.01)}
-                    {renderSlider('maxExpansionFactor', 'Expansion', 1, 3, 0.1)}
+                    {renderSlider('maxExpansionFactor', 'Expansion', 1, 16, 0.1)}
                     {renderSlider('speed', 'Speed', 0.1, 5, 0.1)}
                 </div>
 

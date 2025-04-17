@@ -535,7 +535,7 @@ export class Blob {
     gravity: number,
     damping: number,
     staticShapeType: 'letter' | null,
-    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string }, // <-- Add fontFamily
+    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string } | null, // <-- Allow null
     ctx: CanvasRenderingContext2D | null
   ) {
     // --- Force Application Phase ---

@@ -11,7 +11,7 @@ interface SimulationCanvasProps {
   /**
    * Reference to the canvas element
    */
-  canvasRef: RefObject<HTMLCanvasElement>
+  canvasRef: RefObject<HTMLCanvasElement | null> // Allow null ref
   
   /**
    * Reference to the blobs array
@@ -144,37 +144,24 @@ export function drawSimulation(
   const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
   if (restrictedAreaEnabled && restrictedAreaParams) {
     if (restrictedAreaParams.letter) {
-      // Get baseline offset for perfect visual centering
-      const font = `bold ${restrictedAreaParams.size}px ${params.fontFamily || "Arial"}`;
-      const { baseline } = SimulationUtils.getLetterVisualBounds(restrictedAreaParams.letter, restrictedAreaParams.size, font);
-
-      // Draw the letter visually centered
+      // Geometric center of the restricted area
       const rectCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
       const rectCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
       const rectSize = restrictedAreaParams.size;
+
+      // Call drawLetter with the geometric center Y. 
+      // drawLetter handles the baseline adjustment internally.
       SimulationUtils.drawLetter(
         ctx, 
         restrictedAreaParams.letter,
         rectCenterX,
-        rectCenterY,
+        rectCenterY, // Pass the geometric center Y
         rectSize, 
         colors.letterColor,
         restrictedAreaParams.fontFamily
       );
 
-      // Debug crosshair (can be removed in production)
-      if (process.env.NODE_ENV === 'development') {
-        ctx.save();
-        ctx.strokeStyle = '#f00';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(rectCenterX - 10, rectCenterY);
-        ctx.lineTo(rectCenterX + 10, rectCenterY);
-        ctx.moveTo(rectCenterX, rectCenterY - 10);
-        ctx.lineTo(rectCenterX, rectCenterY + 10);
-        ctx.stroke();
-        ctx.restore();
-      }
+      // Removed debug crosshairs
     }
   }
 

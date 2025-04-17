@@ -7,24 +7,23 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info } from "lucide-react";
-import { SimulationParams, RestrictedAreaParams } from "./types";
-import { paramDescriptions } from "./param-descriptions";
+import { SimulationParams, RestrictedAreaParams } from "./types"; // Removed BlobShape import
+import { paramDescriptions } from "./param-descriptions"; // Corrected casing
 import { drawSimulation } from './SimulationCanvas';
 import { getSimulationColors } from '@/shared/utils';
-import { Blob } from './blob';
-import { EditableSliderValue } from './EditableSliderValue'; // Import the new component
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // Import Accordion
+import { Blob } from './blob'; // Added Blob import
 
 const MAIN_CANVAS_SIZE = 512;
 
 interface AppearanceLayoutControlsProps {
     params: SimulationParams;
     onParamChange: (key: string, value: any) => void;
-    paramDescriptions: typeof paramDescriptions;
+    paramDescriptions: typeof paramDescriptions; // Use typeof for the imported object
     currentTheme: string;
     isAnimating: boolean;
-    mainCanvasRef: React.RefObject<HTMLCanvasElement>;
-    blobsRef: React.RefObject<Blob[]>;
+    // Mini Canvas Props
+    mainCanvasRef: React.RefObject<HTMLCanvasElement | null>; // Allow null for mainCanvasRef
+    blobsRef: React.RefObject<Blob[]>; // Changed BlobShape[] to Blob[]
     miniCanvasSize: number;
     onMiniCanvasSizeChange: (value: number) => void;
     redrawMiniCanvasTrigger: number;
@@ -40,7 +39,7 @@ export function AppearanceLayoutControls({
     currentTheme,
     isAnimating,
     mainCanvasRef,
-    blobsRef,
+    blobsRef, // Destructure blobsRef
     miniCanvasSize,
     onMiniCanvasSizeChange,
     redrawMiniCanvasTrigger,
@@ -122,12 +121,12 @@ export function AppearanceLayoutControls({
         <TooltipProvider delayDuration={100}>
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="ml-1 h-5 w-5 p-0 opacity-50 hover:opacity-100">
-                        <Info className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" className="ml-2 h-5 w-5 p-0">
+                        <Info className="h-4 w-4 text-muted-foreground" />
                         <span className="sr-only">Info</span>
                     </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="max-w-xs z-50"> {/* Added z-index */}
+                <TooltipContent side="right" className="max-w-xs">
                     <p className="text-sm">{paramDescriptions[paramKey] || 'No description available.'}</p>
                 </TooltipContent>
             </Tooltip>
@@ -135,12 +134,12 @@ export function AppearanceLayoutControls({
     );
 
     const renderSlider = (id: keyof SimulationParams, label: string, min: number, max: number, step: number) => (
-        <div className="space-y-1.5"> {/* Reduced vertical spacing */}
+        <div className="space-y-2">
             <div className="flex items-center justify-between">
-                <Label htmlFor={id} className="text-xs font-medium flex items-center"> {/* Reduced font size */}
+                <Label htmlFor={id} className="text-sm font-medium">
                     {label}
-                    {renderTooltip(id)}
                 </Label>
+                {renderTooltip(id)}
             </div>
             <div className="flex items-center space-x-2">
                 <Slider
@@ -152,53 +151,50 @@ export function AppearanceLayoutControls({
                     onValueChange={(value) => onParamChange(id, value[0])}
                     className="flex-grow"
                 />
-                {/* Use EditableSliderValue */}
-                <EditableSliderValue
-                    value={params[id] as number}
-                    min={min}
-                    max={max}
-                    step={step}
-                    onChange={(newValue) => onParamChange(id, newValue)}
-                    className="w-16 h-7 text-xs" // Adjusted size
-                />
+                <span className="text-sm text-muted-foreground w-12 text-right">
+                    {(params[id] as number).toFixed(step === 0.01 ? 2 : (step === 0.1 ? 1 : 0))}
+                </span>
             </div>
         </div>
     );
 
     const renderSwitch = (id: keyof SimulationParams, label: string) => (
-        <div className="flex items-center justify-between space-x-2 py-1"> {/* Added padding */}
-            <Label htmlFor={id} className="text-xs font-medium flex items-center cursor-pointer"> {/* Reduced font size */}
-                {label}
+        <div className="flex items-center justify-between space-x-2">
+            <div className="flex items-center">
+                <Label htmlFor={id} className="text-sm font-medium">
+                    {label}
+                </Label>
                 {renderTooltip(id)}
-            </Label>
+            </div>
             <Switch
                 id={id}
                 checked={params[id] as boolean}
                 onCheckedChange={(checked) => onParamChange(id, checked)}
-                className="scale-75" // Make switch smaller
             />
         </div>
     );
 
     const renderColorInput = (id: keyof SimulationParams, label: string) => (
-        <div className="flex items-center justify-between space-x-2 py-1"> {/* Added padding */}
-            <Label htmlFor={id} className="text-xs font-medium flex items-center"> {/* Reduced font size */}
-                {label}
+        <div className="flex items-center justify-between space-x-2">
+            <div className="flex items-center">
+                <Label htmlFor={id} className="text-sm font-medium">
+                    {label}
+                </Label>
                 {renderTooltip(id)}
-            </Label>
-            <div className="flex items-center space-x-1.5"> {/* Reduced spacing */}
+            </div>
+            <div className="flex items-center space-x-2">
                 <Input
                     id={id}
                     type="color"
                     value={params[id] as string}
                     onChange={(e) => onParamChange(id, e.target.value)}
-                    className="w-7 h-7 p-0.5 border rounded" // Adjusted size
+                    className="w-10 h-8 p-1"
                 />
                 <Input
                     type="text"
                     value={params[id] as string}
                     onChange={(e) => onParamChange(id, e.target.value)}
-                    className="w-20 h-7 text-xs px-1.5" // Adjusted size
+                    className="w-20 h-8 text-sm"
                     aria-label={`${label} hex value`}
                 />
             </div>
@@ -208,124 +204,108 @@ export function AppearanceLayoutControls({
     const colors = getSimulationColors(params, currentTheme);
 
     return (
-        <Card className="h-full flex flex-col border-none shadow-none"> {/* Removed border/shadow */}
-            <CardContent className="p-3 space-y-0 overflow-y-auto flex-grow"> {/* Reduced padding, removed internal spacing */}
+        <Card className="h-full flex flex-col">
+            <CardContent className="space-y-4 overflow-y-auto flex-grow">
 
-                <Accordion type="multiple" defaultValue={['preview', 'container', 'colors', 'restricted-area']} className="w-full">
+                {/* --- Appearance Section --- */}
+                {/* Mini Canvas Preview */}
+                <div className="space-y-2 border-t pt-4">
+                    <Label className="text-sm font-medium">Preview</Label>
+                    <div className="flex justify-center items-center p-2 rounded-md" style={{ backgroundColor: colors.backgroundColor }}>
+                        <canvas
+                            ref={miniCanvasRef}
+                            className="rounded-md border border-border"
+                        />
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Slider
+                            min={100}
+                            max={300}
+                            step={10}
+                            value={[miniCanvasSize]}
+                            onValueChange={(value) => onMiniCanvasSizeChange(value[0])}
+                            className="flex-grow"
+                            aria-label="Preview Size"
+                        />
+                        <span className="text-sm text-muted-foreground w-12 text-right">
+                            {miniCanvasSize}px
+                        </span>
+                    </div>
+                </div>
 
-                    {/* Preview Section */}
-                    <AccordionItem value="preview" className="border-b-0">
-                        <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">Preview</AccordionTrigger>
-                        <AccordionContent className="pt-1 pb-3 space-y-2">
-                            <div className="flex justify-center items-center p-2 rounded-md" style={{ backgroundColor: colors.backgroundColor }}>
-                                <canvas
-                                    ref={miniCanvasRef}
-                                    className="rounded-md border border-border"
-                                />
-                            </div>
-                            <div className="flex items-center space-x-2 pt-1">
-                                <Slider
-                                    min={100}
-                                    max={300}
-                                    step={10}
-                                    value={[miniCanvasSize]}
-                                    onValueChange={(value) => onMiniCanvasSizeChange(value[0])}
-                                    className="flex-grow"
-                                    aria-label="Preview Size"
-                                />
-                                <EditableSliderValue
-                                    value={miniCanvasSize}
-                                    min={100}
-                                    max={300}
-                                    step={10}
-                                    onChange={onMiniCanvasSizeChange}
-                                    className="w-16 h-7 text-xs"
-                                />
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
+                {/* Container Settings */}
+                <div className="space-y-4 border-t pt-4">
+                    <h4 className="text-sm font-semibold mb-2">Container</h4>
+                    {renderSlider('containerMargin', 'Margin', 0, 100, 1)}
+                    {renderSwitch('isRoundedContainer', 'Rounded Container')}
+                    {renderSwitch('showBorder', 'Show Border')}
+                </div>
 
-                    {/* Container Settings Section */}
-                    <AccordionItem value="container" className="border-b-0">
-                        <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">Container</AccordionTrigger>
-                        <AccordionContent className="pt-1 pb-3 space-y-3"> {/* Added spacing */}
-                            {renderSlider('containerMargin', 'Margin', 0, 100, 1)}
-                            {renderSwitch('isRoundedContainer', 'Rounded')}
-                            {renderSwitch('showBorder', 'Border')}
-                        </AccordionContent>
-                    </AccordionItem>
+                {/* Color Settings */}
+                <div className="space-y-4 border-t pt-4">
+                    <h4 className="text-sm font-semibold mb-2">Colors ({currentTheme === 'light' ? 'Light' : 'Dark'} Theme)</h4>
+                    {currentTheme === 'light' ? (
+                        <>
+                            {renderColorInput('backgroundColor', 'Background')}
+                            {renderColorInput('blobFillColor', 'Blob Fill')}
+                            {renderSlider('blobFillOpacity', 'Blob Fill Opacity', 0, 1, 0.01)}
+                            {renderColorInput('blobBorderColor', 'Blob Border')}
+                            {renderColorInput('letterColor', 'Letter Color')}
+                        </>
+                    ) : (
+                        <>
+                            {renderColorInput('darkBackgroundColor', 'Background')}
+                            {renderColorInput('darkBlobFillColor', 'Blob Fill')}
+                            {renderSlider('darkBlobFillOpacity', 'Blob Fill Opacity', 0, 1, 0.01)}
+                            {renderColorInput('darkBlobBorderColor', 'Blob Border')}
+                            {renderColorInput('darkLetterColor', 'Letter Color')}
+                        </>
+                    )}
+                </div>
 
-                    {/* Color Settings Section */}
-                    <AccordionItem value="colors" className="border-b-0">
-                        <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">Colors ({currentTheme === 'light' ? 'Light' : 'Dark'})</AccordionTrigger>
-                        <AccordionContent className="pt-1 pb-3 space-y-2"> {/* Added spacing */}
-                            {currentTheme === 'light' ? (
+                 {/* Restricted Area Settings */}
+                 <div className="space-y-4 border-t pt-4">
+                    <h4 className="text-sm font-semibold mb-2">Restricted Area</h4>
+                    {renderSwitch('restrictedAreaEnabled', 'Enabled')}
+                    {params.restrictedAreaEnabled && (
+                        <>
+                            {params.restrictedAreaShape === 'letter' && (
                                 <>
-                                    {renderColorInput('backgroundColor', 'Background')}
-                                    {renderColorInput('blobFillColor', 'Blob Fill')}
-                                    {renderSlider('blobFillOpacity', 'Fill Opacity', 0, 1, 0.01)}
-                                    {renderColorInput('blobBorderColor', 'Blob Border')}
-                                    {renderColorInput('letterColor', 'Letter')}
-                                </>
-                            ) : (
-                                <>
-                                    {renderColorInput('darkBackgroundColor', 'Background')}
-                                    {renderColorInput('darkBlobFillColor', 'Blob Fill')}
-                                    {renderSlider('darkBlobFillOpacity', 'Fill Opacity', 0, 1, 0.01)}
-                                    {renderColorInput('darkBlobBorderColor', 'Blob Border')}
-                                    {renderColorInput('darkLetterColor', 'Letter')}
-                                </>
-                            )}
-                        </AccordionContent>
-                    </AccordionItem>
-
-                    {/* Restricted Area Settings Section */}
-                    <AccordionItem value="restricted-area" className="border-b-0">
-                        <AccordionTrigger className="text-sm font-semibold py-2 hover:no-underline">Restricted Area</AccordionTrigger>
-                        <AccordionContent className="pt-1 pb-3 space-y-3"> {/* Added spacing */}
-                            {renderSwitch('restrictedAreaEnabled', 'Enabled')}
-                            {params.restrictedAreaEnabled && (
-                                <>
-                                    {params.restrictedAreaShape === 'letter' && (
-                                        <>
-                                            <div className="flex items-center justify-between space-x-2 py-1">
-                                                <Label htmlFor="restrictedAreaLetter" className="text-xs font-medium flex items-center">
-                                                    Letter
-                                                    {renderTooltip('restrictedAreaLetter')}
-                                                </Label>
-                                                <Input
-                                                    id="restrictedAreaLetter"
-                                                    type="text"
-                                                    maxLength={1}
-                                                    value={params.restrictedAreaLetter}
-                                                    onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value)}
-                                                    className="w-10 h-7 text-center text-xs px-1" // Adjusted size
-                                                />
-                                            </div>
-                                            <div className="flex items-center justify-between space-x-2 py-1">
-                                                <Label htmlFor="fontFamily" className="text-xs font-medium flex items-center">
-                                                    Font Family
-                                                    {renderTooltip('fontFamily')}
-                                                </Label>
-                                                <Input
-                                                    id="fontFamily"
-                                                    type="text"
-                                                    value={params.fontFamily}
-                                                    onChange={(e) => onParamChange('fontFamily', e.target.value)}
-                                                    className="w-32 h-7 text-xs px-1.5" // Adjusted size
-                                                />
-                                            </div>
-                                        </>
-                                    )}
-                                    {renderSlider('restrictedAreaSize', 'Size', 50, 500, 10)}
-                                    {renderSlider('restrictedAreaMargin', 'Margin', 0, 50, 1)}
-                                    <div className="text-xs text-muted-foreground pt-1">Use arrow keys to move the area. Shift+Arrow for larger steps.</div>
+                                    <div className="flex items-center justify-between space-x-2">
+                                        <div className="flex items-center">
+                                            <Label htmlFor="restrictedAreaLetter" className="text-sm font-medium">Letter</Label>
+                                            {renderTooltip('restrictedAreaLetter')}
+                                        </div>
+                                        <Input
+                                            id="restrictedAreaLetter"
+                                            type="text"
+                                            maxLength={1}
+                                            value={params.restrictedAreaLetter}
+                                            onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value)} // Removed .toUpperCase()
+                                            className="w-12 h-8 text-center"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between space-x-2">
+                                        <div className="flex items-center">
+                                            <Label htmlFor="fontFamily" className="text-sm font-medium">Font Family</Label>
+                                            {renderTooltip('fontFamily')}
+                                        </div>
+                                        <Input
+                                            id="fontFamily"
+                                            type="text"
+                                            value={params.fontFamily}
+                                            onChange={(e) => onParamChange('fontFamily', e.target.value)}
+                                            className="w-32 h-8 text-sm"
+                                        />
+                                    </div>
                                 </>
                             )}
-                        </AccordionContent>
-                    </AccordionItem>
-
-                </Accordion>
+                            {renderSlider('restrictedAreaSize', 'Size', 50, 500, 10)}
+                            {renderSlider('restrictedAreaMargin', 'Margin', 0, 50, 1)}
+                            <div className="text-xs text-muted-foreground">Use arrow keys to move the restricted area. Shift+Arrow for larger steps.</div>
+                        </>
+                    )}
+                </div>
 
             </CardContent>
         </Card>
