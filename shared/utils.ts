@@ -2,6 +2,17 @@ import { SimulationParams } from "@/components/blob-simulation/types";
 import { logWarn } from "./logger"; // Import logger
 
 /**
+ * Safely retrieves the device pixel ratio, returning 1 if `window` is not available (SSR).
+ * @returns {number} The device pixel ratio or 1.
+ */
+export const getDevicePixelRatio = () => { // Added export
+  if (typeof window !== 'undefined') {
+    return window.devicePixelRatio || 1;
+  }
+  return 1;
+};
+
+/**
  * Converts a hexadecimal color string (3 or 6 digits, with or without #) to an RGBA color string.
  * Handles invalid input by returning transparent black ('rgba(0,0,0,0)') and logging a warning.
  *
@@ -95,8 +106,6 @@ export function poissonDiskSampling(
  *   blobBorder: string;
  *   letterColor: string;
  *   borderColor: string; // Color for the container border
- *   themeToggleBg: string;
- *   themeToggleIcon: string;
  * }} An object containing the calculated color values for the current theme.
  */
 export function getSimulationColors(
@@ -108,16 +117,15 @@ export function getSimulationColors(
   blobBorder: string;
   letterColor: string;
   borderColor: string;
-  themeToggleBg: string;
-  themeToggleIcon: string;
+  // Removed themeToggleBg and themeToggleIcon
 } {
   const isDark = theme === 'dark';
-  
+
   // Background color
   const backgroundColor = isDark
     ? params.darkBackgroundColor || '#1a2b2f'
     : params.backgroundColor || '#aac9ca';
-  
+
   // Blob fill color with opacity
   const rawBlobFill = isDark
     ? params.darkBlobFillColor || '#000000'
@@ -126,36 +134,28 @@ export function getSimulationColors(
     ? params.darkBlobFillOpacity || 0.3
     : params.blobFillOpacity || 0.3;
   const blobFill = hexToRgba(rawBlobFill, blobFillOpacity);
-  
+
   // Blob border color
   const blobBorder = isDark
     ? params.darkBlobBorderColor || '#77e4cb'
     : params.blobBorderColor || '#466e91';
-  
+
   // Letter color
   const letterColor = isDark
     ? params.darkLetterColor || '#FFFFFF'
     : params.letterColor || '#000000';
-  
+
   // Border color for container (same as blob border if not specified)
   const borderColor = blobBorder;
-  
-  // Theme toggle button colors
-  const themeToggleBg = isDark
-    ? params.themeToggleBgColorDark || '#333333'
-    : params.themeToggleBgColorLight || '#D3D3D3';
-    
-  const themeToggleIcon = isDark
-    ? params.themeToggleIconColorDark || '#FFFFFF'
-    : params.themeToggleIconColorLight || '#000000';
-  
+
+  // Removed Theme toggle button colors logic
+
   return {
     backgroundColor,
     blobFill,
     blobBorder,
     letterColor,
     borderColor,
-    themeToggleBg,
-    themeToggleIcon,
+    // Removed themeToggleBg, themeToggleIcon
   };
 }

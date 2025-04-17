@@ -6,7 +6,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SimulationParams } from "./types";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card"; // Keep CardContent for padding
+import { EditableSliderValue } from './EditableSliderValue'; // Import the new component
 
 interface ContainerControlsProps {
     params: SimulationParams;
@@ -24,7 +25,7 @@ export function ContainerControls({
         <TooltipProvider>
             <Tooltip delayDuration={100}>
                 <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 opacity-50 cursor-help">
+                    <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 opacity-60 hover:opacity-100 cursor-help">
                         <Info className="h-3 w-3" />
                     </Button>
                 </TooltipTrigger>
@@ -35,26 +36,39 @@ export function ContainerControls({
         </TooltipProvider>
     );
 
-    const renderSlider = (id: keyof SimulationParams, label: string, min: number, max: number, step: number) => (
-        <div className="space-y-2">
-            <Label htmlFor={id} className="flex items-center">
-                {label} {renderTooltip(id)}
-            </Label>
-            <div className="flex items-center gap-2">
-                <Slider
-                    id={id}
-                    min={min} max={max} step={step}
-                    value={[params[id] as number]}
-                    onValueChange={([value]) => onParamChange(id, value)}
-                />
-                <span className="text-xs w-10 text-right">{(params[id] as number).toFixed(0)}</span>
+    const renderSlider = (id: keyof SimulationParams, label: string, min: number, max: number, step: number) => {
+        return (
+            <div className="space-y-2">
+                <div className="flex justify-between items-center"> {/* Container for label */}
+                    <Label htmlFor={id} className="flex items-center text-xs">
+                        {label} {renderTooltip(id)}
+                    </Label>
+                    {/* Removed min/max span */}
+                </div>
+                <div className="flex items-center gap-2">
+                    <Slider
+                        id={id}
+                        min={min} max={max} step={step}
+                        value={[params[id] as number]}
+                        onValueChange={([value]) => onParamChange(id, value)}
+                    />
+                     {/* Replace span with EditableSliderValue */}
+                    <EditableSliderValue
+                        value={params[id] as number}
+                        min={min}
+                        max={max}
+                        step={step}
+                        onChange={(newValue) => onParamChange(id, newValue)}
+                        className="w-12 shrink-0" // Adjust width as needed
+                    />
+                </div>
             </div>
-        </div>
-    );
+        );
+    }
 
     const renderSwitch = (id: keyof SimulationParams, label: string) => (
-        <div className="flex items-center justify-between space-x-2">
-            <Label htmlFor={id} className="flex items-center">
+        <div className="flex items-center justify-between space-x-2 py-1">
+            <Label htmlFor={id} className="flex items-center text-xs">
                 {label} {renderTooltip(id)}
             </Label>
             <Switch
@@ -66,15 +80,10 @@ export function ContainerControls({
     );
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-base">Container</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {renderSlider('containerMargin', 'Margin', 0, 100, 1)}
-                {renderSwitch('isRoundedContainer', 'Rounded Container')}
-                {renderSwitch('showBorder', 'Show Border')}
-            </CardContent>
-        </Card>
+        <CardContent className="p-4 space-y-4">
+            {renderSlider('containerMargin', 'Margin', 0, 100, 1)}
+            {renderSwitch('isRoundedContainer', 'Rounded Container')}
+            {renderSwitch('showBorder', 'Show Border')}
+        </CardContent>
     );
 }

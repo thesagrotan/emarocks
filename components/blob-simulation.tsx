@@ -5,7 +5,8 @@ import { useTheme } from "next-themes"
 import { Vector2 } from "three"
 
 // Import refactored components and types
-import { SimulationPhysicsPanel } from "./blob-simulation/simulation-physics-panel"; // Renamed import
+// Remove SimulationPhysicsPanel import if it's no longer used anywhere else
+import { SimulationPhysicsPanel } from "./blob-simulation/simulation-physics-panel";
 import { AppearanceLayoutControls } from "./blob-simulation/appearance-layout-controls"; // Renamed import
 import { Blob } from "./blob-simulation/blob"
 import { SimulationParamsContext } from "./blob-simulation/context"
@@ -36,7 +37,9 @@ const getDevicePixelRatio = () => {
 /** Key used for storing simulation settings in localStorage. @type {string} */
 const STORAGE_KEY = 'blob-simulation-settings';
 /** Constant size (width and height) for the simulation canvas. @type {number} */
-const CANVAS_SIZE = 512;
+const MAIN_CANVAS_SIZE = 512;
+/** Constant size (width and height) for the mini simulation canvas. @type {number} */
+// Removed MINI_CANVAS_SIZE constant
 
 /**
  * The main component for the Blob Simulation application.
@@ -59,6 +62,7 @@ export function BlobSimulation() {
    * @type {React.RefObject<HTMLCanvasElement>}
    */
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Removed miniCanvasRef
 
   /**
    * Reference to the array containing all active Blob objects in the simulation.
@@ -89,6 +93,10 @@ export function BlobSimulation() {
    * @type {[ToolMode | null, React.Dispatch<React.SetStateAction<ToolMode | null>>]}
    */
   const [toolMode, setToolMode] = useState<ToolMode | null>(null);
+
+  // --- Mini Canvas State ---
+  const [miniCanvasSize, setMiniCanvasSize] = useState(240); // State for mini canvas size
+  const [redrawMiniCanvasTrigger, setRedrawMiniCanvasTrigger] = useState(0); // Trigger for mini canvas redraw
 
   // --- Theme ---
   /**
@@ -162,6 +170,8 @@ export function BlobSimulation() {
       // For position override (default: centered)
       restrictedAreaX: undefined,
       restrictedAreaY: undefined,
+      // Font Family
+      fontFamily: 'Inter', // Default font
     };
   });
 
@@ -201,7 +211,7 @@ export function BlobSimulation() {
       size: restrictedAreaSize,
       margin: restrictedAreaMargin,
       letter: restrictedAreaLetter,
-      fontFamily,
+      fontFamily, // Pass fontFamily
     };
   }, [simulationParams]);
 
@@ -209,23 +219,29 @@ export function BlobSimulation() {
    * The main drawing function passed to the animation loop and other triggers.
    * Delegates the actual rendering logic to the `drawSimulation` utility function.
    * Handles potential errors during drawing and stops animation if an error occurs.
+   * Triggers a redraw of the mini canvas.
    * @type {() => void}
    */
   const draw = useCallback(() => {
     try {
+      // Draw the main simulation
       drawSimulation(
         canvasRef,
         blobsRef,
         simulationParams,
         currentTheme,
         calculateRestrictedAreaParams,
-        CANVAS_SIZE
+        MAIN_CANVAS_SIZE // Use main canvas size
       );
+
+      // Trigger mini canvas redraw by incrementing the counter
+      setRedrawMiniCanvasTrigger(prev => prev + 1);
+
     } catch (error) {
       logError("Error during draw cycle:", error, "BlobSimulation.draw"); // Replaced console.error
       setIsAnimating(false);
     }
-  }, [simulationParams, currentTheme, calculateRestrictedAreaParams]);
+  }, [simulationParams, currentTheme, calculateRestrictedAreaParams]); // Removed drawSimulation from dependencies as it's called internally
 
   /**
    * Effect to set the `isMounted` flag to true after the component mounts.
@@ -281,6 +297,11 @@ export function BlobSimulation() {
     setSimulationParams(prev => ({ ...prev, [key]: value }));
   }, [isAnimating, handleLiveParameterUpdate]);
 
+  /** Handler for mini canvas size slider */
+  const handleMiniCanvasSizeChange = useCallback((value: number) => {
+    setMiniCanvasSize(value);
+  }, []);
+
   /**
    * Initializes the simulation environment.
    * - Sets up the canvas dimensions and scaling based on device pixel ratio.
@@ -294,14 +315,15 @@ export function BlobSimulation() {
     try {
       logInfo("Initializing simulation...", undefined, "initializeSimulation"); // Replaced console.log
       const canvas = canvasRef.current;
+      // Removed miniCanvas logic
       if (!canvas) {
-        logWarn("Canvas ref is not available", undefined, "initializeSimulation"); // Replaced console.warn
+        logWarn("Main canvas ref is not available", undefined, "initializeSimulation"); // Replaced console.warn
         return;
       }
       
       const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        logWarn("Could not get 2D context from canvas", undefined, "initializeSimulation"); // Replaced console.warn
+      if (!ctx) { // Check both contexts
+        logWarn("Could not get 2D context from main canvas", undefined, "initializeSimulation"); // Replaced console.warn
         return;
       }
 
@@ -310,23 +332,25 @@ export function BlobSimulation() {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       
-      const canvasSize = CANVAS_SIZE;
+      const mainCanvasSize = MAIN_CANVAS_SIZE;
       const dpi = getDevicePixelRatio();
       
-      // Set canvas dimensions with proper DPI handling
-      canvas.width = canvasSize * dpi;
-      canvas.height = canvasSize * dpi;
-      canvas.style.width = `${canvasSize}px`;
-      canvas.style.height = `${canvasSize}px`;
+      // Set main canvas dimensions with proper DPI handling
+      canvas.width = mainCanvasSize * dpi;
+      canvas.height = mainCanvasSize * dpi;
+      canvas.style.width = `${mainCanvasSize}px`;
+      canvas.style.height = `${mainCanvasSize}px`;
       ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
+
+      // Removed mini canvas setup
 
       // Get theme-appropriate letter color
       const letterDisplayColor = currentTheme === "dark" 
         ? simulationParams.darkLetterColor 
         : simulationParams.letterColor;
       
-      // Calculate restricted area parameters
-      const pdsRestrictedArea = calculateRestrictedAreaParams(canvasSize, canvasSize);
+      // Calculate restricted area parameters based on main canvas size
+      const pdsRestrictedArea = calculateRestrictedAreaParams(mainCanvasSize, mainCanvasSize);
       
       // Clear any cached letter shape data before initialization
       SimulationUtils.letterShapeCache.clear();
@@ -335,13 +359,13 @@ export function BlobSimulation() {
       blobsRef.current = initializeBlobs(
         ctx,
         simulationParams,
-        canvasSize,
+        mainCanvasSize, // Use main canvas size for blob initialization
         pdsRestrictedArea,
         letterDisplayColor
       );
 
       logInfo("Initialization complete.", undefined, "initializeSimulation"); // Replaced console.log
-      draw();
+      draw(); // This will also trigger the first mini canvas draw via the effect in AppearanceLayoutControls
     } catch (error) {
       logError("Error in initializeSimulation:", error, "initializeSimulation"); // Replaced console.error
     }
@@ -350,6 +374,7 @@ export function BlobSimulation() {
   /**
    * Handles the restart of the simulation.
    * Clears the current blobs, redraws an empty canvas, and then re-initializes the simulation.
+   * Also clears the mini canvas.
    * Uses `requestAnimationFrame` and `setTimeout` to ensure proper visual clearing before re-initialization.
    * @type {() => void}
    */
@@ -362,7 +387,8 @@ export function BlobSimulation() {
     // Use requestAnimationFrame for the redraw to avoid race conditions
     if (typeof window !== 'undefined') {
       requestAnimationFrame(() => {
-        draw(); // Draw empty canvas
+        // Clear main canvas via draw function
+        draw(); 
         // Re-initialize after the draw confirms canvas is clear
         setTimeout(() => {
           initializeSimulation();
@@ -454,7 +480,18 @@ export function BlobSimulation() {
    * Programmatically clicks the hidden file input element.
    */
   const triggerFileInput = useCallback(() => {
-    fileInputRef.current?.click();
+    // Find the input within AppearanceLayoutControls if ref is moved there,
+    // OR keep the ref here and pass the trigger function down.
+    // Let's keep the ref here for simplicity for now.
+    // We need to associate this ref with the input inside AppearanceLayoutControls.
+    // A better approach might be to pass the ref down, but let's try passing the trigger function.
+    // The input element needs to be accessible. Let's modify AppearanceLayoutControls to accept the ref.
+    // --- Alternative: Keep ref here, pass trigger function ---
+    // This requires the input element ID to be stable in AppearanceLayoutControls
+    const inputElement = document.getElementById('load-settings-input');
+    inputElement?.click();
+    // --- OR: Pass ref down (preferred) ---
+    // fileInputRef.current?.click(); // This won't work if ref is only here and input is in child
   }, []);
 
 
@@ -565,11 +602,11 @@ export function BlobSimulation() {
         // Calculate initial position if not already set
         const initialX = typeof prev.restrictedAreaX === 'number' 
           ? prev.restrictedAreaX 
-          : (CANVAS_SIZE / 2 - prev.restrictedAreaSize / 2);
+          : (MAIN_CANVAS_SIZE / 2 - prev.restrictedAreaSize / 2);
         
         const initialY = typeof prev.restrictedAreaY === 'number' 
           ? prev.restrictedAreaY 
-          : (CANVAS_SIZE / 2 - prev.restrictedAreaSize / 2);
+          : (MAIN_CANVAS_SIZE / 2 - prev.restrictedAreaSize / 2);
         
         return {
           ...prev,
@@ -598,8 +635,8 @@ export function BlobSimulation() {
         restrictedAreaEnabled
       } = simulationParams;
       
-      const canvasWidth = CANVAS_SIZE;
-      const canvasHeight = CANVAS_SIZE;
+      const canvasWidth = MAIN_CANVAS_SIZE;
+      const canvasHeight = MAIN_CANVAS_SIZE;
       
       // Import getSimulationColors from shared utils only when needed
       const { getSimulationColors } = require("@/shared/utils");
@@ -693,8 +730,8 @@ export function BlobSimulation() {
       switch (toolMode) {
         case 'add':
           // Check if click is inside container bounds
-          if (x < containerMargin || x > CANVAS_SIZE - containerMargin || 
-              y < containerMargin || y > CANVAS_SIZE - containerMargin) {
+          if (x < containerMargin || x > MAIN_CANVAS_SIZE - containerMargin || 
+              y < containerMargin || y > MAIN_CANVAS_SIZE - containerMargin) {
             logWarn("Cannot add shape: click is outside the container margin.", { x, y }, "handleCanvasClick"); // Replaced console.warn
             return;
           }
@@ -742,7 +779,7 @@ export function BlobSimulation() {
   };
 
   /** Memoized calculation of restricted area parameters. @type {RestrictedAreaParams | undefined} */
-  const restrictedAreaParams = calculateRestrictedAreaParams(CANVAS_SIZE, CANVAS_SIZE);
+  const restrictedAreaParams = calculateRestrictedAreaParams(MAIN_CANVAS_SIZE, MAIN_CANVAS_SIZE);
   /** Current theme-appropriate color for the letter. @type {string} */
   const letterDisplayColor = currentTheme === "dark" 
     ? simulationParams.darkLetterColor 
@@ -752,7 +789,7 @@ export function BlobSimulation() {
   const letterAreaStats = useLetterAreaCalculation(
     restrictedAreaParams,
     letterDisplayColor,
-    CANVAS_SIZE
+    MAIN_CANVAS_SIZE // Use main canvas size for stats
   );
   
   /** Hook call to manage letter shape cache invalidation based on relevant parameter changes. */
@@ -771,14 +808,14 @@ export function BlobSimulation() {
   // Render placeholder if component is not yet mounted to prevent hydration errors.
   if (!isMounted) {
     return (
-      // Adjust placeholder to reflect fixed sidebar layout conceptually
+      // Restore original placeholder with two sidebars
       <div className="relative w-full min-h-screen p-4 md:p-6">
         {/* Fixed Placeholders */}
         <div className={`fixed top-0 left-0 bottom-0 w-[320px] h-screen bg-neutral-100 dark:bg-neutral-800 rounded-lg m-4 md:m-6 z-10`}></div>
         <div className={`fixed top-0 right-0 bottom-0 w-[320px] h-screen bg-neutral-100 dark:bg-neutral-800 rounded-lg m-4 md:m-6 z-10`}></div>
-        
-        {/* Centered Canvas Placeholder */}
-        <div className="flex justify-center items-center min-h-screen">
+
+        {/* Centered Canvas Placeholder - Restore original padding */}
+        <div className="flex justify-center items-center min-h-screen" style={{ paddingLeft: `344px`, paddingRight: `344px` }}>
           <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0">
             <div className="w-full h-full rounded-lg bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center">
               <p className="text-neutral-400">Loading simulation...</p>
@@ -794,8 +831,8 @@ export function BlobSimulation() {
     <SimulationParamsContext.Provider value={{ simulationParams, setSimulationParams }}>
       {/* Main container - relative positioning context */}
       <div className="relative w-full min-h-screen">
-        
-        {/* Left Fixed Sidebar */}
+
+        {/* Left Fixed Sidebar (Restored) */}
         <div className={`fixed top-0 left-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
           <SimulationPhysicsPanel
             params={simulationParams}
@@ -804,36 +841,38 @@ export function BlobSimulation() {
             onDownloadSVG={downloadSVG}
             onDownloadSettings={handleDownloadSettings}
             onLoadSettings={handleLoadSettings}
-            triggerFileInput={triggerFileInput}
+            triggerFileInput={triggerFileInput} // Pass trigger function
             isAnimating={isAnimating}
             paramDescriptions={paramDescriptions}
-            canvasSize={CANVAS_SIZE} // Pass canvasSize here
+            canvasSize={MAIN_CANVAS_SIZE}
+            // Pass fileInputRef down if preferred
+            // fileInputRef={fileInputRef}
           />
         </div>
 
-        {/* Center Content Area (Canvas) */}
-        {/* Add padding to prevent overlap with fixed sidebars */}
-        <div 
+        {/* Center Content Area (Main Canvas) - Restore padding */}
+        <div
           className="flex justify-center items-center min-h-screen"
-          style={{ 
-            paddingLeft: `344px`, 
-            paddingRight: `344px` 
+          style={{
+            paddingLeft: `344px`, // Restore left padding
+            paddingRight: `344px`
           }}
         >
+          {/* Main Canvas Container */}
           <div className="relative w-full max-w-[512px] aspect-square flex-shrink-0">
-            {/* Canvas Component */}
+            {/* Main Canvas Component */}
             <SimulationCanvas
               canvasRef={canvasRef}
               blobsRef={blobsRef}
               currentTheme={currentTheme}
               params={simulationParams}
               calculateRestrictedAreaParams={calculateRestrictedAreaParams}
-              canvasSize={CANVAS_SIZE}
+              canvasSize={MAIN_CANVAS_SIZE}
               isUsingTool={!!toolMode}
               onCanvasClick={handleCanvasClick}
             />
-            
-            {/* Overlays Component - Ensure z-index is appropriate if needed */}
+
+            {/* Overlays Component */}
             <SimulationOverlays
               isAnimating={isAnimating}
               isLiveEditing={isLiveEditing}
@@ -845,14 +884,21 @@ export function BlobSimulation() {
           </div>
         </div>
 
-        {/* Right Fixed Sidebar */}
+        {/* Right Fixed Sidebar (Now contains all controls) */}
         <div className={`fixed top-0 right-0 bottom-0 w-[320px] h-screen overflow-y-auto p-4 md:p-6 z-10`}>
           <AppearanceLayoutControls
             params={simulationParams}
             onParamChange={handleParamChange}
             paramDescriptions={paramDescriptions}
-            currentTheme={currentTheme} // Pass currentTheme down
-            isAnimating={isAnimating} // Pass isAnimating here
+            currentTheme={currentTheme}
+            isAnimating={isAnimating}
+            // Mini Canvas Props
+            mainCanvasRef={canvasRef}
+            blobsRef={blobsRef} // Pass blobsRef down
+            miniCanvasSize={miniCanvasSize}
+            onMiniCanvasSizeChange={handleMiniCanvasSizeChange}
+            redrawMiniCanvasTrigger={redrawMiniCanvasTrigger}
+            // Removed physics/action props
           />
         </div>
 

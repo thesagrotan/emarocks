@@ -1,5 +1,3 @@
-typescript
-// filepath: /Users/daniel/Developer/emarocks/shared/utils.test.ts
 import { hexToRgba, poissonDiskSampling } from './utils';
 
 describe('shared/utils', () => {
@@ -127,4 +125,54 @@ describe('shared/utils', () => {
          expect(points.length).toBeGreaterThan(0);
      });
   });
+
+  // Add tests for getSimulationColors if they don't exist,
+  // ensuring they don't check for the removed themeToggle properties.
+  // Example structure:
+  /*
+  describe('getSimulationColors', () => {
+    const mockParamsLight = {
+      backgroundColor: '#aaaaaa',
+      blobFillColor: '#bbbbbb',
+      blobFillOpacity: 0.5,
+      blobBorderColor: '#cccccc',
+      letterColor: '#dddddd',
+      // No theme toggle params
+    };
+    const mockParamsDark = {
+      darkBackgroundColor: '#111111',
+      darkBlobFillColor: '#222222',
+      darkBlobFillOpacity: 0.6,
+      darkBlobBorderColor: '#333333',
+      darkLetterColor: '#444444',
+      // No theme toggle params
+    };
+
+    it('should return correct colors for light theme', () => {
+      const colors = getSimulationColors({ ...mockParamsLight, ...mockParamsDark }, 'light');
+      expect(colors.backgroundColor).toBe('#aaaaaa');
+      expect(colors.blobFill).toBe('rgba(187, 187, 187, 0.5)'); // Example RGBA
+      expect(colors.blobBorder).toBe('#cccccc');
+      expect(colors.letterColor).toBe('#dddddd');
+      expect(colors.borderColor).toBe('#cccccc');
+      // Ensure themeToggle properties are not present
+      expect(colors).not.toHaveProperty('themeToggleBg');
+      expect(colors).not.toHaveProperty('themeToggleIcon');
+    });
+
+    it('should return correct colors for dark theme', () => {
+       const colors = getSimulationColors({ ...mockParamsLight, ...mockParamsDark }, 'dark');
+       expect(colors.backgroundColor).toBe('#111111');
+       expect(colors.blobFill).toBe('rgba(34, 34, 34, 0.6)'); // Example RGBA
+       expect(colors.blobBorder).toBe('#333333');
+       expect(colors.letterColor).toBe('#444444');
+       expect(colors.borderColor).toBe('#333333');
+       // Ensure themeToggle properties are not present
+       expect(colors).not.toHaveProperty('themeToggleBg');
+       expect(colors).not.toHaveProperty('themeToggleIcon');
+    });
+
+    // Add tests for default fallbacks if needed
+  });
+  */
 });

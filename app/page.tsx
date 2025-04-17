@@ -1,20 +1,28 @@
 "use client"
+// Assuming BlobSimulation is exported from index.ts or index.tsx within the directory
 import { BlobSimulation } from "@/components/blob-simulation";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ThemeToggle } from "@/components/ui/ThemeToggle"; // Import the new component
 
 export default function Home() {
   return (
-    // Main container can be simpler now, just providing basic structure
-    // Removed padding, items-center, justify-center as BlobSimulation handles its internal layout
-    <main className="min-h-screen w-full">
-      {/* BlobSimulation now manages its own fixed/centered layout */}
-      <BlobSimulation />
-
-      {/* Position ThemeToggle fixed at bottom center */}
-      {/* Removed right-4, added left-1/2 and -translate-x-1/2 */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-20"> 
+    <main className="flex min-h-screen w-full flex-col items-center justify-between p-4 md:p-8 lg:p-12 relative">
+      {/* Add ThemeToggle to the top-right corner */}
+      <div className="fixed bottom-4 left-20 z-50">
         <ThemeToggle />
       </div>
+
+      {/* Full-width container for the simulation and controls */}
+      <div className="w-full max-w-7xl flex-grow flex flex-col md:flex-row gap-6">
+        {/* Simulation takes up most space */}
+        <div className="flex-grow flex items-center justify-center">
+          <BlobSimulation />
+        </div>
+      </div>
+
+      {/* Optional: Footer or other elements */}
+      <footer className="w-full mt-8 text-center text-xs text-muted-foreground">
+        {/* Footer content */}
+      </footer>
     </main>
   );
 }

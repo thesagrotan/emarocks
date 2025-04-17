@@ -355,12 +355,13 @@ export class Blob {
             nearestPoint = new Vector2(testX, testY);
             // Estimate normal by central difference
             const eps = 1;
+            // Convert boolean results to numbers (1 or 0) using + operator
             const nX =
-              +isPointInLetter(ctx, letter, centerX, centerY, size, testX + eps, testY, "black", fontFamily)
-              - isPointInLetter(ctx, letter, centerX, centerY, size, testX - eps, testY, "black", fontFamily);
+              +(isPointInLetter(ctx, letter, centerX, centerY, size, testX + eps, testY, "black", fontFamily))
+              - +(isPointInLetter(ctx, letter, centerX, centerY, size, testX - eps, testY, "black", fontFamily));
             const nY =
-              +isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY + eps, "black", fontFamily)
-              - isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY - eps, "black", fontFamily);
+              +(isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY + eps, "black", fontFamily))
+              - +(isPointInLetter(ctx, letter, centerX, centerY, size, testX, testY - eps, "black", fontFamily));
             const normal = new Vector2(nX, nY);
             if (normal.lengthSq() > 0) normal.normalize();
             bestNormal = normal;
@@ -381,23 +382,27 @@ export class Blob {
   /**
    * Draws the blob onto the provided canvas context.
    * Renders the blob as a filled and stroked polygon defined by its particle positions.
+   * Optionally scales the drawing based on the provided scaleFactor.
    * @param {CanvasRenderingContext2D} ctx - The canvas rendering context.
    * @param {string} fillColor - The fill color (e.g., 'rgba(r,g,b,a)') for the blob.
    * @param {string} strokeColor - The stroke color for the blob's outline.
+   * @param {number} [scaleFactor=1] - Optional scaling factor to apply to the drawing coordinates.
    */
-  draw(ctx: CanvasRenderingContext2D, fillColor: string, strokeColor: string) {    
+  draw(ctx: CanvasRenderingContext2D, fillColor: string, strokeColor: string, scaleFactor: number = 1) {    
     if (this.particles.length < 2) return;
     ctx.beginPath();
         if (!this.particles[0]?.pos) {
       logWarn("First particle missing in draw", { blobId: this.id }, "Blob.draw"); // Replaced console.warn
       return;
     }
-    ctx.moveTo(this.particles[0].pos.x, this.particles[0].pos.y);
+    // Apply scale factor to the first point
+    ctx.moveTo(this.particles[0].pos.x * scaleFactor, this.particles[0].pos.y * scaleFactor);
 
     for (let i = 1; i <= this.edgePointCount; i++) {
       const currentIndex = i % this.edgePointCount;
       if (this.particles[currentIndex]?.pos) {
-        ctx.lineTo(this.particles[currentIndex].pos.x, this.particles[currentIndex].pos.y);
+        // Apply scale factor to subsequent points
+        ctx.lineTo(this.particles[currentIndex].pos.x * scaleFactor, this.particles[currentIndex].pos.y * scaleFactor);
       } else {
         logWarn(`Particle or position undefined at index ${currentIndex} during draw`, { blobId: this.id }, "Blob.draw"); // Replaced console.warn
         ctx.closePath();
@@ -408,7 +413,8 @@ export class Blob {
     
     ctx.fillStyle = fillColor;
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 1;
+    // Scale line width slightly for smaller previews, but ensure it's at least 0.5
+    ctx.lineWidth = Math.max(0.5, 1 * scaleFactor);
     ctx.fill();
     ctx.stroke();
   }
@@ -529,7 +535,7 @@ export class Blob {
     gravity: number,
     damping: number,
     staticShapeType: 'letter' | null,
-    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string } | null, // <-- Add fontFamily
+    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string }, // <-- Add fontFamily
     ctx: CanvasRenderingContext2D | null
   ) {
     // --- Force Application Phase ---

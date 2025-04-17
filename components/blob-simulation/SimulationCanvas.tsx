@@ -5,6 +5,7 @@ import { getSimulationColors } from "@/shared/utils"
 import * as SimulationUtils from "./utils"
 import { Blob } from "./blob"
 import { SimulationParams, RestrictedAreaParams } from "./types"
+import { MAIN_CANVAS_SIZE } from "./constants"; // Import MAIN_CANVAS_SIZE
 
 interface SimulationCanvasProps {
   /**
@@ -85,15 +86,15 @@ export function SimulationCanvas({
  * - Background
  * - Container boundary
  * - Letter shape (if enabled)
- * - Blobs
+ * - Blobs (scaled appropriately for the canvas size)
  */
 export function drawSimulation(
-  canvasRef: RefObject<HTMLCanvasElement>,
+  canvasRef: RefObject<HTMLCanvasElement | null>, // Allow null ref
   blobsRef: RefObject<Blob[]>,
   params: SimulationParams,
   currentTheme: string,
   calculateRestrictedAreaParams: (width: number, height: number) => RestrictedAreaParams | undefined,
-  canvasSize: number
+  canvasSize: number // The size of the target canvas (could be main or mini)
 ) {
   const canvas = canvasRef.current;
   if (!canvas) return;
@@ -101,7 +102,7 @@ export function drawSimulation(
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  const { showBorder, containerMargin, isRoundedContainer, restrictedAreaEnabled } = params;
+  const { showBorder, containerMargin, isRoundedContainer, restrictedAreaEnabled, fontFamily } = params;
   
   // Get theme-appropriate colors
   const colors = getSimulationColors(params, currentTheme);
@@ -110,6 +111,9 @@ export function drawSimulation(
   const dpi = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   const canvasWidth = canvasSize;
   const canvasHeight = canvasSize;
+  
+  // Calculate scale factor based on target canvas size vs main simulation size
+  const scaleFactor = canvasSize / MAIN_CANVAS_SIZE; 
 
   // Reset transform and clear canvas
   ctx.setTransform(dpi, 0, 0, dpi, 0, 0);
@@ -118,11 +122,12 @@ export function drawSimulation(
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   // Draw container boundary
-  if (showBorder && containerMargin > 0) {
+  const scaledContainerMargin = containerMargin * scaleFactor; // Scale the margin
+  if (showBorder && scaledContainerMargin > 0) {
     ctx.strokeStyle = colors.borderColor;
     ctx.lineWidth = 1;
      if (isRoundedContainer) {
-      const radius = (Math.min(canvasWidth, canvasHeight) - containerMargin * 2) / 2;
+      const radius = (Math.min(canvasWidth, canvasHeight) - scaledContainerMargin * 2) / 2;
       const centerX = canvasWidth / 2;
       const centerY = canvasHeight / 2;
       if (radius > 0) {
@@ -131,7 +136,7 @@ export function drawSimulation(
         ctx.stroke();
       }
     } else {
-      ctx.strokeRect(containerMargin, containerMargin, canvasWidth - containerMargin * 2, canvasHeight - containerMargin * 2);
+      ctx.strokeRect(scaledContainerMargin, scaledContainerMargin, canvasWidth - scaledContainerMargin * 2, canvasHeight - scaledContainerMargin * 2);
     }
   }
   
@@ -176,7 +181,8 @@ export function drawSimulation(
   // Draw blobs AFTER letter so they appear above it visually
   if (blobsRef.current) {
     blobsRef.current.forEach((blob) => {
-      if (blob?.draw) blob.draw(ctx, colors.blobFill, colors.blobBorder); 
+      // Pass the calculated scaleFactor to the blob's draw method
+      if (blob?.draw) blob.draw(ctx, colors.blobFill, colors.blobBorder, scaleFactor); 
     });
   }
 }

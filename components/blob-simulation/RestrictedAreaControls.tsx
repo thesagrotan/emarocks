@@ -7,7 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SimulationParams } from "./types";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card"; // Keep CardContent for padding
+import { EditableSliderValue } from './EditableSliderValue'; // Import the new component
 
 interface RestrictedAreaControlsProps {
     params: SimulationParams;
@@ -27,7 +28,7 @@ export function RestrictedAreaControls({
         <TooltipProvider>
             <Tooltip delayDuration={100}>
                 <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 opacity-50 cursor-help">
+                    <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 opacity-60 hover:opacity-100 cursor-help">
                         <Info className="h-3 w-3" />
                     </Button>
                 </TooltipTrigger>
@@ -38,26 +39,39 @@ export function RestrictedAreaControls({
         </TooltipProvider>
     );
 
-    const renderSlider = (id: keyof SimulationParams, label: string, min: number, max: number, step: number) => (
-        <div className="space-y-2">
-            <Label htmlFor={id} className="flex items-center">
-                {label} {renderTooltip(id)}
-            </Label>
-            <div className="flex items-center gap-2">
-                <Slider
-                    id={id}
-                    min={min} max={max} step={step}
-                    value={[params[id] as number]}
-                    onValueChange={([value]) => onParamChange(id, value)}
-                />
-                <span className="text-xs w-10 text-right">{(params[id] as number).toFixed(0)}</span>
+    const renderSlider = (id: keyof SimulationParams, label: string, min: number, max: number, step: number) => {
+        return (
+            <div className="space-y-2">
+                 <div className="flex justify-between items-center"> {/* Container for label */}
+                    <Label htmlFor={id} className="flex items-center text-xs">
+                        {label} {renderTooltip(id)}
+                    </Label>
+                    {/* Removed min/max span */}
+                </div>
+                <div className="flex items-center gap-2">
+                    <Slider
+                        id={id}
+                        min={min} max={max} step={step}
+                        value={[params[id] as number]}
+                        onValueChange={([value]) => onParamChange(id, value)}
+                    />
+                     {/* Replace span with EditableSliderValue */}
+                    <EditableSliderValue
+                        value={params[id] as number}
+                        min={min}
+                        max={max}
+                        step={step}
+                        onChange={(newValue) => onParamChange(id, newValue)}
+                        className="w-12 shrink-0" // Adjust width as needed
+                    />
+                </div>
             </div>
-        </div>
-    );
+        );
+    }
 
     const renderSwitch = (id: keyof SimulationParams, label: string) => (
-        <div className="flex items-center justify-between space-x-2">
-            <Label htmlFor={id} className="flex items-center">
+        <div className="flex items-center justify-between space-x-2 py-1">
+            <Label htmlFor={id} className="flex items-center text-xs">
                 {label} {renderTooltip(id)}
             </Label>
             <Switch
@@ -69,42 +83,38 @@ export function RestrictedAreaControls({
     );
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-base">Restricted Area</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                {renderSwitch('restrictedAreaEnabled', 'Enable Restricted Area')}
-                {params.restrictedAreaEnabled && (
-                    <>
-                        <div className="space-y-2">
-                            <Label htmlFor="restrictedAreaLetter" className="flex items-center">
-                                Letter {renderTooltip("restrictedAreaLetter")}
-                            </Label>
-                            <Input
-                                id="restrictedAreaLetter"
-                                value={params.restrictedAreaLetter}
-                                onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value.slice(0, 1))}
-                                maxLength={1}
-                                className="w-16 text-center"
-                            />
-                        </div>
-                        {renderSlider('restrictedAreaSize', 'Letter Size', 10, canvasSize, 1)}
-                        <div className="space-y-2">
-                            <Label htmlFor="fontFamily" className="flex items-center">
-                                Font Family {renderTooltip("fontFamily")}
-                            </Label>
-                            <Input
-                                id="fontFamily"
-                                value={params.fontFamily || ''}
-                                onChange={(e) => onParamChange('fontFamily', e.target.value)}
-                                placeholder="e.g., Arial, Times New Roman"
-                            />
-                        </div>
-                        {/* Add X/Y position controls if manual positioning is desired */}
-                    </>
-                )}
-            </CardContent>
-        </Card>
+        <CardContent className="p-4 space-y-4">
+            {renderSwitch('restrictedAreaEnabled', 'Enable Restricted Area')}
+            {params.restrictedAreaEnabled && (
+                <>
+                    <div className="space-y-2">
+                        <Label htmlFor="restrictedAreaLetter" className="flex items-center text-xs">
+                            Letter {renderTooltip("restrictedAreaLetter")}
+                        </Label>
+                        <Input
+                            id="restrictedAreaLetter"
+                            value={params.restrictedAreaLetter}
+                            onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value.slice(0, 1))}
+                            maxLength={1}
+                            className="w-16 text-center h-8"
+                        />
+                    </div>
+                    {renderSlider('restrictedAreaSize', 'Letter Size', 10, canvasSize, 1)}
+                    <div className="space-y-2">
+                        <Label htmlFor="fontFamily" className="flex items-center text-xs">
+                            Font Family {renderTooltip("fontFamily")}
+                        </Label>
+                        <Input
+                            id="fontFamily"
+                            value={params.fontFamily || ''}
+                            onChange={(e) => onParamChange('fontFamily', e.target.value)}
+                            placeholder="e.g., Arial"
+                            className="h-8"
+                        />
+                    </div>
+                    {/* Add X/Y position controls if manual positioning is desired */}
+                </>
+            )}
+        </CardContent>
     );
 }
