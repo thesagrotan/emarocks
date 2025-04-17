@@ -11,7 +11,7 @@ interface SimulationCanvasProps {
   /**
    * Reference to the canvas element
    */
-  canvasRef: RefObject<HTMLCanvasElement | null> // Allow null ref
+  canvasRef: RefObject<HTMLCanvasElement | null> // Allow null
   
   /**
    * Reference to the blobs array
@@ -144,32 +144,52 @@ export function drawSimulation(
   const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
   if (restrictedAreaEnabled && restrictedAreaParams) {
     if (restrictedAreaParams.letter) {
-      // Geometric center of the restricted area
+      // Get baseline offset for perfect visual centering
+      const font = `bold ${restrictedAreaParams.size}px ${params.fontFamily || "Arial"}`;
+      const { baseline } = SimulationUtils.getLetterVisualBounds(restrictedAreaParams.letter, restrictedAreaParams.size, font);
+
+      // Draw the letter visually centered
       const rectCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
       const rectCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
       const rectSize = restrictedAreaParams.size;
-
-      // Call drawLetter with the geometric center Y. 
-      // drawLetter handles the baseline adjustment internally.
       SimulationUtils.drawLetter(
         ctx, 
         restrictedAreaParams.letter,
         rectCenterX,
-        rectCenterY, // Pass the geometric center Y
+        rectCenterY,
         rectSize, 
         colors.letterColor,
         restrictedAreaParams.fontFamily
       );
 
-      // Removed debug crosshairs
+      // Debug crosshair (can be removed in production)
+      if (process.env.NODE_ENV === 'development') {
+        ctx.save();
+        ctx.strokeStyle = '#f00';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(rectCenterX - 10, rectCenterY);
+        ctx.lineTo(rectCenterX + 10, rectCenterY);
+        ctx.moveTo(rectCenterX, rectCenterY - 10);
+        ctx.lineTo(rectCenterX, rectCenterY + 10);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
   }
 
   // Draw blobs AFTER letter so they appear above it visually
   if (blobsRef.current) {
     blobsRef.current.forEach((blob) => {
-      // Pass the calculated scaleFactor to the blob's draw method
-      if (blob?.draw) blob.draw(ctx, colors.blobFill, colors.blobBorder, scaleFactor); 
+      // Pass the calculated scaleFactor and new border params to the blob's draw method
+      if (blob?.draw) blob.draw(
+        ctx, 
+        colors.blobFill, 
+        colors.blobBorder, 
+        params.showBlobBorder, // New: Pass showBlobBorder
+        params.blobBorderWidth, // New: Pass blobBorderWidth
+        scaleFactor
+      ); 
     });
   }
 }

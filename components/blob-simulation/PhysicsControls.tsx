@@ -74,7 +74,7 @@ export function PhysicsControls({
             {renderSlider('shapeCount', 'Blob Count', 1, 500, 1)}
             {renderSlider('edgePointCount', 'Edge Points', 3, 50, 1)}
             {renderSlider('minBlobSize', 'Min Blob Size', 1, 50, 1)}
-            {renderSlider('repelDistance', 'Repel Distance', 0, 20, 0.1)}
+            {renderSlider('repelDistance', 'Repel Distance', 0, 64, 0.1)}
             {renderSlider('springTension', 'Spring Tension', 0.01, 1, 0.01)}
             {renderSlider('interactionStrength', 'Interaction Strength', 0, 0.5, 0.005)}
             {renderSlider('damping', 'Damping', 0.5, 1, 0.01)}

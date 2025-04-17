@@ -2,7 +2,7 @@ import { Vector2 } from "three";
 import { Particle } from "./particle";
 import { Spring } from "./spring";
 import { isPointInLetter, createLetterPath, analyzeLetter, Region } from "./utils"; // Add new imports
-import { logWarn } from "@/shared"; // Import logger
+import { logWarn, logInfo } from "@/shared"; // Import logger
 
 /**
  * Temporary vector used for calculations within Blob methods to avoid repeated allocations.
@@ -416,6 +416,8 @@ export class Blob {
     // Scale line width slightly for smaller previews, but ensure it's at least 0.5
     ctx.lineWidth = Math.max(0.5, 1 * scaleFactor);
     ctx.fill();
+    // Log the values just before stroking
+    logInfo(`Drawing blob ${this.id} border`, { strokeColor, lineWidth: ctx.lineWidth }, "Blob.draw");
     ctx.stroke();
   }
 
@@ -535,7 +537,7 @@ export class Blob {
     gravity: number,
     damping: number,
     staticShapeType: 'letter' | null,
-    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string } | null, // <-- Allow null
+    staticShapeParams: { x: number; y: number; size: number; letter?: string; fontFamily?: string }, // <-- Add fontFamily
     ctx: CanvasRenderingContext2D | null
   ) {
     // --- Force Application Phase ---

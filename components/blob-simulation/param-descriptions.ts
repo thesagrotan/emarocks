@@ -24,6 +24,8 @@ export const paramDescriptions: Record<string, string> = {
     darkBlobFillColor: "Fill color for blobs in dark mode.",
     darkBlobBorderColor: "Border color for blobs in dark mode.",
     darkLetterColor: "Color of the restricted area letter in dark mode.",
-    darkBlobFillOpacity: "Opacity of the blob fill color in dark mode. Lower values make blobs more transparent."
+    darkBlobFillOpacity: "Opacity of the blob fill color in dark mode. Lower values make blobs more transparent.",
+    showBlobBorder: "Toggles the visibility of the border around each blob.",
+    blobBorderWidth: "Controls the thickness of the border around each blob, in pixels."
     // Add descriptions for any other parameters like gravity, restrictedAreaMargin, etc. if they exist
 };

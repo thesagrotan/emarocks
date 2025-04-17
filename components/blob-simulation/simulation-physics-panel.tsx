@@ -94,7 +94,7 @@ export function SimulationPhysicsPanel({
                     {renderSlider('shapeCount', 'Shape Count', 10, 1000, 10)}
                     {renderSlider('edgePointCount', 'Edge Points', 3, 40, 1)}
                     {renderSlider('minBlobSize', 'Min Size', 1, 20, 1)}
-                    {renderSlider('repelDistance', 'Repel Dist', 0, 10, 0.5)}
+                    {renderSlider('repelDistance', 'Repel Dist', 0, 64, 0.5)}
                     {renderSlider('springTension', 'Tension', 0.01, 1, 0.01)}
                     {renderSlider('interactionStrength', 'Interaction', 0, 0.5, 0.01)}
                     {renderSlider('gravity', 'Gravity', -0.5, 0.5, 0.01)}

@@ -626,7 +626,7 @@ export function BlobSimulation() {
     if (!isMounted) return;
     
     try {
-      logInfo("Generating SVG...", undefined, "downloadSVG");
+      logInfo("Generating SVG...", undefined, "downloadSVG"); // Replaced console.log
       const { 
         showBorder, containerMargin, isRoundedContainer,
         restrictedAreaEnabled
@@ -635,23 +635,9 @@ export function BlobSimulation() {
       const canvasWidth = MAIN_CANVAS_SIZE;
       const canvasHeight = MAIN_CANVAS_SIZE;
       
+      // Import getSimulationColors from shared utils only when needed
       const { getSimulationColors } = require("@/shared/utils");
       const colors = getSimulationColors(simulationParams, currentTheme);
-
-      // Helper function to escape XML characters
-      const escapeXml = (unsafe: string): string => {
-        if (!unsafe) return '';
-        return unsafe.replace(/[<>&'"]/g, (c) => {
-            switch (c) {
-                case '<': return '&lt;';
-                case '>': return '&gt;';
-                case '&': return '&amp;';
-                case '\'': return '&apos;';
-                case '"': return '&quot;';
-                default: return c;
-            }
-        });
-      };
 
       let svgContent = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg" style="background-color: ${colors.backgroundColor};">`;
 
@@ -672,8 +658,7 @@ export function BlobSimulation() {
       blobsRef.current.forEach((blob) => {
         if (blob?.getSVGPath) {
           const path = blob.getSVGPath();
-          // Escape path data just in case, though unlikely to be the issue here
-          svgContent += `<path d="${escapeXml(path)}" fill="${colors.blobFill}" stroke="${colors.blobBorder}" stroke-width="1" />`;
+          svgContent += `<path d="${path}" fill="${colors.blobFill}" stroke="${colors.blobBorder}" stroke-width="1" />`;
         }
       });
 
@@ -681,18 +666,12 @@ export function BlobSimulation() {
       const restrictedAreaParams = calculateRestrictedAreaParams(canvasWidth, canvasHeight);
       if (restrictedAreaEnabled && restrictedAreaParams?.letter) {
         const fontFamily = simulationParams.fontFamily || "Arial";
-        const safeFontFamily = escapeXml(fontFamily);
-        // Always enclose font family in quotes
-        const svgFontFamily = `"${safeFontFamily}"`; 
+        const svgFontFamily = fontFamily.includes(" ") ? `"${fontFamily}"` : fontFamily;
         
         const svgCenterX = restrictedAreaParams.x + restrictedAreaParams.size / 2;
         const svgCenterY = restrictedAreaParams.y + restrictedAreaParams.size / 2;
         
-        // Escape the letter content
-        const safeLetter = escapeXml(restrictedAreaParams.letter);
-
-        // Ensure font-family attribute value is quoted
-        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.letterColor}" text-anchor="middle" dominant-baseline="middle">${safeLetter}</text>`;
+        svgContent += `<text x="${svgCenterX}" y="${svgCenterY}" font-family=${svgFontFamily} font-size="${restrictedAreaParams.size * 0.8}" font-weight="bold" fill="${colors.letterColor}" text-anchor="middle" dominant-baseline="middle">${restrictedAreaParams.letter}</text>`;
       }
 
       svgContent += `</svg>`;
@@ -708,7 +687,9 @@ export function BlobSimulation() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      logError("Error downloading SVG:", error, "downloadSVG");
+      logError("Error downloading SVG:", error, "downloadSVG"); // Replaced console.error
+      // Consider using a more user-friendly notification instead of alert
+      // alert("Failed to download SVG. See console for details.");
       logWarn("Failed to download SVG. See console for details.", undefined, "downloadSVG");
     }
   }, [isMounted, simulationParams, currentTheme, calculateRestrictedAreaParams]);

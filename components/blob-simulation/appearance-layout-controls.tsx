@@ -22,7 +22,7 @@ interface AppearanceLayoutControlsProps {
     currentTheme: string;
     isAnimating: boolean;
     // Mini Canvas Props
-    mainCanvasRef: React.RefObject<HTMLCanvasElement | null>; // Allow null for mainCanvasRef
+    mainCanvasRef: React.RefObject<HTMLCanvasElement>;
     blobsRef: React.RefObject<Blob[]>; // Changed BlobShape[] to Blob[]
     miniCanvasSize: number;
     onMiniCanvasSizeChange: (value: number) => void;
@@ -219,9 +219,9 @@ export function AppearanceLayoutControls({
                     </div>
                     <div className="flex items-center space-x-2">
                         <Slider
-                            min={100}
+                            min={40}
                             max={300}
-                            step={10}
+                            step={4}
                             value={[miniCanvasSize]}
                             onValueChange={(value) => onMiniCanvasSizeChange(value[0])}
                             className="flex-grow"
