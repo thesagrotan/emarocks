@@ -2,8 +2,12 @@
 // Assuming BlobSimulation is exported from index.ts or index.tsx within the directory
 import { BlobSimulation } from "@/components/blob-simulation";
 import { ThemeToggle } from "@/components/ui/ThemeToggle"; // Import the new component
+import Image from "next/image";
+// Removed BlobSimulationWrapper import
 
 export default function Home() {
+  // Removed Page Render Start log
+
   return (
     <main className="flex min-h-screen w-full flex-col items-center justify-between p-4 md:p-8 lg:p-12 relative">
       {/* Add ThemeToggle to the top-right corner */}
@@ -18,6 +22,8 @@ export default function Home() {
           <BlobSimulation />
         </div>
       </div>
+
+      {/* Removed div containing BlobSimulationWrapper */}
 
       {/* Optional: Footer or other elements */}
       <footer className="w-full mt-8 text-center text-xs text-muted-foreground">

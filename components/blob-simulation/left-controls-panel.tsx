@@ -7,14 +7,12 @@ import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SimulationParams } from "./types";
 import { Info } from "lucide-react";
-import { ActionControls } from "./ActionControls"; // Import ActionControls
 
 interface LeftControlsPanelProps {
     params: SimulationParams;
     onParamChange: (key: string, value: any) => void;
     onRestart: () => void;
-    onDownloadSettings: () => void; // Add onDownloadSettings
-    triggerFileInput: () => void; // Add triggerFileInput
+    onDownloadSVG: () => void;
     isAnimating: boolean;
     paramDescriptions: Record<string, string>;
 }
@@ -23,8 +21,7 @@ export function LeftControlsPanel({
     params,
     onParamChange,
     onRestart,
-    onDownloadSettings, // Destructure onDownloadSettings
-    triggerFileInput, // Destructure triggerFileInput
+    onDownloadSVG,
     isAnimating,
     paramDescriptions
 }: LeftControlsPanelProps) {
@@ -51,22 +48,28 @@ export function LeftControlsPanel({
             </CardHeader>
             <CardContent className="space-y-6">
                 {/* Action Buttons */}
-                <ActionControls
-                    onRestart={onRestart}
-                    onDownloadSettings={onDownloadSettings}
-                    triggerFileInput={triggerFileInput}
-                />
+                <div className="space-y-2">
+                    <h3 className="text-sm font-medium mb-2">Actions</h3>
+                    <Button onClick={onRestart} className="w-full">Restart Simulation</Button>
+                    <Button onClick={onDownloadSVG} variant="outline" className="w-full">Download SVG</Button>
+                    {/* Add Load button here if implemented */}
+                </div>
 
                 {/* Typography Section */}
                 <div className="space-y-4">
-                    {/* Removed the h3 tag that was causing the error */}
-                    <Label htmlFor="fontFamily">Font Family</Label>
-                    <Input
-                        id="fontFamily"
-                        value={params.fontFamily || ''}
-                        onChange={(e) => onParamChange('fontFamily', e.target.value)}
-                        placeholder="e.g., Arial, Times New Roman"
-                    />
+                    <h3 className="text-sm font-medium flex items-center">
+                        Typography
+                        {renderTooltip("fontFamily")}
+                    </h3>
+                    <div className="space-y-2">
+                        <Label htmlFor="fontFamily">Font Family</Label>
+                        <Input
+                            id="fontFamily"
+                            value={params.fontFamily || ''}
+                            onChange={(e) => onParamChange('fontFamily', e.target.value)}
+                            placeholder="e.g., Arial, Times New Roman"
+                        />
+                    </div>
                 </div>
 
                 {/* Style Section */}

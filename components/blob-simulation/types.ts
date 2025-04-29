@@ -67,14 +67,18 @@ export interface SimulationParams {
   themeToggleIconColorDark: string;
 
   // Restricted Area / Static Obstacle
-  /** Whether the restricted area (e.g., letter) is enabled */
+  /** Whether the restricted area (e.g., letter or SVG) is enabled */
   restrictedAreaEnabled: boolean;
-  /** Shape of the restricted area (currently only 'letter' is fully supported) */
-  restrictedAreaShape: 'letter' | null; // Refined type
-  /** Size of the restricted area (e.g., font size for letter) */
+  /** Shape of the restricted area */
+  restrictedAreaShape: 'letter' | 'svg'; // Updated: Added 'svg' option
+  /** Size of the restricted area (e.g., font size for letter, affects scaling for SVG) */
   restrictedAreaSize: number;
-  /** The letter character to display in the restricted area */
-  restrictedAreaLetter: string;
+  /** The letter character to display if shape is 'letter' */
+  restrictedAreaLetter: string; // Kept for letter mode
+  /** Font family used if shape is 'letter' */
+  fontFamily?: string; // Kept for letter mode
+  /** The SVG path data string if shape is 'svg' */
+  svgPathString: string; // Added for SVG mode
   /** Margin around the restricted area shape */
   restrictedAreaMargin: number;
   /** Optional override for the X position of the restricted area (default: centered) */
@@ -84,14 +88,14 @@ export interface SimulationParams {
 }
 
 /**
- * Defines the parameters for the restricted area (e.g., the letter shape).
+ * Defines the parameters for the restricted area (e.g., the letter or SVG shape).
  */
 export interface RestrictedAreaParams {
   /** X-coordinate of the top-left corner (or center depending on context) */
   x: number;
   /** Y-coordinate of the top-left corner (or center depending on context) */
   y: number;
-  /** Size of the area (e.g., font size) */
+  /** Size of the area (e.g., font size or SVG scale factor) */
   size: number;
   /** Margin around the shape */
   margin: number;
@@ -99,6 +103,10 @@ export interface RestrictedAreaParams {
   letter?: string;
   /** The font family used for the letter */
   fontFamily?: string;
+  /** The SVG path data string, if the shape is 'svg' */
+  svgPath?: string; // Added
+  /** The type of shape */
+  shapeType: 'letter' | 'svg'; // Added
 }
 
 /**

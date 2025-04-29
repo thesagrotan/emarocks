@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SimulationParams } from "./types";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button"; // Import Button
+import { Textarea } from "@/components/ui/textarea"; // Import Textarea
 
 interface RightControlsPanelProps {
     params: SimulationParams;
@@ -105,16 +106,20 @@ export function RightControlsPanel({
                     {params.restrictedAreaEnabled && (
                         <>
                             <div className="space-y-2">
-                                <Label htmlFor="restrictedAreaLetter" className="flex items-center">
-                                    Letter {renderTooltip("restrictedAreaLetter")}
+                                <Label htmlFor="svgPathString" className="flex items-center">
+                                    SVG Path Data {renderTooltip("svgPathString")}
                                 </Label>
-                                <Input
-                                    id="restrictedAreaLetter"
-                                    value={params.restrictedAreaLetter}
-                                    onChange={(e) => onParamChange('restrictedAreaLetter', e.target.value.slice(0, 1))}
-                                    maxLength={1}
-                                    className="w-16 text-center"
+                                <Textarea
+                                    id="svgPathString"
+                                    placeholder="e.g., M10 10 H 90 V 90 H 10 Z"
+                                    value={params.svgPathString}
+                                    onChange={(e) => onParamChange('svgPathString', e.target.value)}
+                                    rows={4} // Adjust rows as needed
+                                    className="font-mono text-xs" // Style for code-like input
                                 />
+                                <p className="text-xs text-muted-foreground">
+                                    Enter the 'd' attribute value from an SVG &lt;path&gt; element.
+                                </p>
                             </div>
                             {renderSlider('restrictedAreaSize', 'Letter Size', 10, CANVAS_SIZE || 512, 1)}
                             {/* Add X/Y position controls if manual positioning is desired */}
